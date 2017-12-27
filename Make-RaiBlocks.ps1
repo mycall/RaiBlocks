@@ -25,8 +25,8 @@ $downloads = $(
         installPath="$((Get-Item "Env:ProgramFiles(x86)").Value)\NSIS\"},
 
     @{name="Boost";
-        url="https://downloads.sourceforge.net/project/boost/boost/1.63.0/boost_1_63_0.zip";
-        filename="boost_1_63_0.zip";
+        url="https://dl.bintray.com/boostorg/release/1.66.0/source/boost_1_66_0.zip";
+        filename="boost_1_66_0.zip";
         extractPath="$buildPath\boost-src"},
 
     @{name="Qt";
@@ -61,13 +61,14 @@ function Set-VsCmd
 {
     param(
         [parameter(Mandatory=$true, HelpMessage="Enter VS version as 2010, 2012, 2013, 2015, 2017")]
-        [ValidateSet(2010,2012,2013,2015,2017)]
+        [ValidateSet(2012,2013,2015,2017)]
         [int]$version
     )
-    $VS_VERSION = @{ 2010 = "10.0"; 2012 = "11.0"; 2013 = "12.0"; 2015 = "14.0"; 2017 = "" }
+    $VS_VERSION = @{ 2012 = "11.0"; 2013 = "12.0"; 2015 = "14.0"; 2017 = "" }
     if ($version -eq 2017)
     {
         $vsVersion = "15.0"
+        $env:msvcver=msvc-14.1
         Push-Location
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio\2017"
         Set-Location $targetDir
@@ -77,11 +78,18 @@ function Set-VsCmd
     elseif ($version -eq 2015)
     {
         $vsVersion = $VS_VERSION[$version]
+        $env:msvcver=msvc-14.0
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])\Common7\Tools"
         $vcvars = "vcvarsall.bat"
     }
     else
     {
+        if ($VS_VERSION -eq 2013) {
+            $env:msvcver=msvc-12.0
+        } else {
+            $env:msvcver=msvc-11.0
+        }
+
         $vsVersion = $VS_VERSION[$version]
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
         $vcvars = "vcvarsall.bat"
@@ -178,9 +186,16 @@ function exec
 
 Write-Host "* Building RaiBlocks..."
 
+if (!(Test-Path $rootPath)){
+    mkdir $rootPath | out-null
+}
+
 if (!(Test-Path $repoPath)){
     Write-Host "* Cloning $githubRepo into $repoPath"
     & git clone -q $githubRepo $repoPath
+}
+
+if (!(Test-Path $buildPath)){
     Write-Host "* Copying $repoPath into $buildPath"
     copy -Recurse $repoPath $buildPath | out-null
 }
@@ -208,7 +223,7 @@ foreach ($file in $downloads){
         if (Test-Path $wget) {
             Push-Location
             cd $filePath\..
-            exec { & $wget --continue $url }
+            exec { & $wget --no-verbose --continue $url }
             Pop-Location
         }
         else {
