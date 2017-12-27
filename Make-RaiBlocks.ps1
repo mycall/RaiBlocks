@@ -256,7 +256,7 @@ If (!(Get-Content $buildBoostProjectConfig | Select-String -Pattern "cl.exe")) {
     Write-Host "* Fixing $buildBoostProjectConfig"
     Invoke-SearchReplace $buildBoostProjectConfig "using msvc ;" "`nusing msvc : $vsVersion : `"$clPath`";"
 }
-& ./b2 --prefix=$buildPath\boost --build-dir=$buildPath\boost-build link=static "address=model 64" install
+& ./b2 --prefix=$buildPath\boost --build-dir=$buildPath\boost-build link=static address-model=64 install
 return
 if (Test-Path $buildPath\qt) {
     Write-Host "* Clearing qt build"dir 
