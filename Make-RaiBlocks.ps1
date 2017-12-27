@@ -68,7 +68,7 @@ function Set-VsCmd
     if ($version -eq 2017)
     {
         $vsVersion = "15.0"
-        $env:msvcver=msvc-14.1
+        $env:msvcver="msvc-14.1"
         Push-Location
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio\2017"
         Set-Location $targetDir
@@ -78,16 +78,16 @@ function Set-VsCmd
     elseif ($version -eq 2015)
     {
         $vsVersion = $VS_VERSION[$version]
-        $env:msvcver=msvc-14.0
+        $env:msvcver="msvc-14.0"
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])\Common7\Tools"
         $vcvars = "vcvarsall.bat"
     }
     else
     {
         if ($VS_VERSION -eq 2013) {
-            $env:msvcver=msvc-12.0
+            $env:msvcver="msvc-12.0"
         } else {
-            $env:msvcver=msvc-11.0
+            $env:msvcver="msvc-11.0"
         }
 
         $vsVersion = $VS_VERSION[$version]
@@ -246,8 +246,8 @@ foreach ($file in $downloads){
         Pop-Location
     }
 }
-#Write-Host "** Please verify build tools are installed before continuing **"
-#pause
+Write-Host "** Please verify build tools are installed before continuing **"
+pause
 
 # add python
 if ($env:PYTHONPATH -eq $null) {
