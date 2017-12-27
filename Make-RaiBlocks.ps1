@@ -254,6 +254,9 @@ if ($env:PYTHONPATH -eq $null) {
     $env:PYTHONPATH = "C:\Python27"
     $env:PATH=”$env:PATH;C:\Python27”
 }
+if ($env:PATH -notcontains "$buildPath\qt") {
+    $env:PATH="$env:PATH;$buildPath\qt"
+}
 
 Set-VsCmd -version 2017
 cd $buildPath\boost-src
@@ -274,9 +277,10 @@ If (!(Get-Content $buildBoostProjectConfig | Select-String -Pattern "cl.exe")) {
 & ./b2 --prefix=$buildPath\boost --build-dir=$buildPath\boost-build link=static address-model=64 install
 return
 if (Test-Path $buildPath\qt) {
-    Write-Host "* Clearing qt build"dir 
+    Write-Host "* Clearing qt build" 
 }
 cd $buildPath\qt-src
+set 
 $result = exec { & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $buildPath\qt }
-$result = exec { & ./nmake }
+$result = exec { & ./nmake -DBOOST_ROOT=$buildPath\boost-build -DQt5_DIR=$buildPath\qt -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON }
 $result = exec { & ./nmake install }
