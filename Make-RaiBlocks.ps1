@@ -10,6 +10,7 @@ $downloadPath = "$rootpath\downloads"
 $repoPath = "$rootPath\github"
 $buildPath = "$rootPath\github-build"
 $githubRepo = "https://github.com/clemahieu/raiblocks.git"
+$python2path = 'C:\Python27'
 
 $downloads = $(
 
@@ -38,14 +39,9 @@ $downloads = $(
         url="https://www.python.org/ftp/python/2.7.14/python-2.7.14.amd64.msi";
         filename="python-2.7.14.amd64.msi";
         extractPath="$($env:TEMP)\python2";
-        installPath="C:\Python27"}
+        installPath="$python2path"}
 
 )
-
-#    @{name="CMake";
-#        url="https://cmake.org/files/v3.10/cmake-3.10.1-win64-x64.zip";
-#        filename="cmake-3.10.1-win64-x64.zip";
-#        extractPath="$buildPath\cmake"},
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Unzip
@@ -67,7 +63,7 @@ function Set-VsCmd
     $VS_VERSION = @{ 2012 = "11.0"; 2013 = "12.0"; 2015 = "14.0"; 2017 = "" }
     if ($version -eq 2017)
     {
-        $vsVersion = "15.0"
+        $env:vsVersion = "15.0"
         $env:msvcver="msvc-14.1"
         Push-Location
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio\2017"
@@ -77,7 +73,7 @@ function Set-VsCmd
     }
     elseif ($version -eq 2015)
     {
-        $vsVersion = $VS_VERSION[$version]
+        $env:vsVersion = $VS_VERSION[$version]
         $env:msvcver="msvc-14.0"
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])\Common7\Tools"
         $vcvars = "vcvarsall.bat"
@@ -90,7 +86,7 @@ function Set-VsCmd
             $env:msvcver="msvc-11.0"
         }
 
-        $vsVersion = $VS_VERSION[$version]
+        $env:vsVersion = $VS_VERSION[$version]
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
         $vcvars = "vcvarsall.bat"
     }
@@ -246,41 +242,53 @@ foreach ($file in $downloads){
         Pop-Location
     }
 }
-Write-Host "** Please verify build tools are installed before continuing **"
-pause
+#Write-Host "** Please verify build tools are installed before continuing **"
+#pause
 
 # add python
+
 if ($env:PYTHONPATH -eq $null) {
-    $env:PYTHONPATH = "C:\Python27"
-    $env:PATH=”$env:PATH;C:\Python27”
+    $env:PYTHONPATH = $python2path
 }
-if ($env:PATH -notcontains "$buildPath\qt") {
-    $env:PATH="$env:PATH;$buildPath\qt"
+if ($env:PATH -notmatch '$python2path') {
+    $env:PATH=”$python2path;$env:PATH"
+}
+
+$buildQtPath = "$buildPath\qt"
+$buildQtSrcPath = "$buildPath\qt-src"
+if ($env:PATH -notmatch '$buildQtPath') {
+    $env:PATH="$env:PATH;$buildQtPath"
 }
 
 Set-VsCmd -version 2017
 cd $buildPath\boost-src
-& ./bootstrap.bat
-
-if (Test-Path $buildPath\boost-build) {
-    Write-Host "* Clearing boost-build"
-    rd -recurse -force $buildPath\boost-build
+if (!(Test-Path project-config.jam)) {
+    & ./bootstrap.bat
 }
-$buildBoostPath = "$buildPath\boost-src"
-$buildBoostProjectConfig = "$buildBoostPath\project-config.jam"
+$buildBoostPath = "$buildPath\boost"
+$buildBoostBuildPath = "$buildPath\boost-build"
+$buildBoostSrcPath = "$buildPath\boost-src"
+$buildBoostProjectConfig = "$buildBoostSrcPath\project-config.jam"
 If (!(Get-Content $buildBoostProjectConfig | Select-String -Pattern "cl.exe")) {
-    $clPath = Resolve-Anypath cl.exe
-    Write-Host "* Found $clPath"
     Write-Host "* Fixing $buildBoostProjectConfig"
-    Invoke-SearchReplace $buildBoostProjectConfig "using msvc ;" "`nusing msvc : $vsVersion : `"$clPath`";"
+    $clPath = Resolve-Anypath cl.exe
+    Write-Host "* Patching project-config.jam with $clPath"
+    Invoke-SearchReplace $buildBoostProjectConfig "using msvc ;" "`nusing msvc : $env:vsVersion : `"$clPath`";"
 }
-& ./b2 --prefix=$buildPath\boost --build-dir=$buildPath\boost-build link=static address-model=64 install
-return
-if (Test-Path $buildPath\qt) {
-    Write-Host "* Clearing qt build" 
+if (!(Test-Path $buildBoostBuildPath\boost)) {
+    & ./b2 --prefix=$buildBoostPath --build-dir=$buildBoostBuildPath link=static address-model=64 install
 }
-cd $buildPath\qt-src
-set 
-$result = exec { & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $buildPath\qt }
-$result = exec { & ./nmake -DBOOST_ROOT=$buildPath\boost-build -DQt5_DIR=$buildPath\qt -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON }
-$result = exec { & ./nmake install }
+if ($env:PATH -notcontains "$buildBoostBuildPath\bin") {
+    $env:PATH="$env:PATH;$buildBoostBuildPath\bin"
+}
+cd $buildQtSrcPath 
+& ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $buildQtPath
+$env:BOOST_ROOT="$buildBoostPath"
+$env:Qt5_DIR="$buildQtPath"
+$env:RAIBLOCKS_GUI="ON"
+$env:ENABLE_AVX2="ON"
+$env:CRYPTOPP_CUSTOM="ON"
+& nmake -D BOOST_ROOT="$buildBoostPath" -D Qt5_DIR="$buildQtPath" -D RAIBLOCKS_GUI=ON -D ENABLE_AVX2=ON -D CRYPTOPP_CUSTOM=ON
+& nmake install
+cd $buildPath
+& git submodule update --init --recursive
