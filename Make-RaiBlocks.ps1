@@ -3,6 +3,11 @@
     Return
 }
 
+if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
+    Write-Error "** Visual Studio 2012 or newer is required **"
+    Return
+}
+
 clear
 
 $rootPath = "$env:USERPROFILE\dev\raiblocks"  # change this to development path
@@ -56,7 +61,7 @@ function Unzip
 function Set-VsCmd
 {
     param(
-        [parameter(Mandatory=$true, HelpMessage="Enter VS version as 2010, 2012, 2013, 2015, 2017")]
+        [parameter(Mandatory=$true, HelpMessage="Enter VS version as 2012, 2013, 2015, 2017")]
         [ValidateSet(2012,2013,2015,2017)]
         [int]$version
     )
