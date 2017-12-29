@@ -287,7 +287,9 @@ if ($env:PATH -notcontains "$buildBoostBuildPath\bin") {
     $env:PATH="$env:PATH;$buildBoostBuildPath\bin"
 }
 cd $buildQtSrcPath 
-& ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $buildQtPath
+if (!(Test-Path $buildQtPath)) {
+    & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $buildQtPath
+}
 $env:BOOST_ROOT="$buildBoostPath"
 $env:Qt5_DIR="$buildQtPath"
 $env:RAIBLOCKS_GUI="ON"
