@@ -242,7 +242,6 @@ foreach ($file in $downloads){
         Push-Location
         Unzip $filePath $extractPath
         cd $extractPath
-        cd *
         move -force * ..
         Pop-Location
     }
