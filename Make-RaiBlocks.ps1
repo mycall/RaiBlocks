@@ -242,6 +242,9 @@ foreach ($file in $downloads){
         Push-Location
         Unzip $filePath $extractPath
         cd $extractPath
+        if (Test-Path *) {
+            cd *
+        }
         move -force * ..
         Pop-Location
     }
@@ -266,7 +269,7 @@ if ($env:PATH -notmatch '$buildQtPath') {
 
 Set-VsCmd -version 2017
 cd $buildPath\boost-src
-if (!(Test-Path project-config.jam)) {
+if (!(Test-Path "project-config.jam")) {
     & ./bootstrap.bat
 }
 $buildBoostPath = "$buildPath\boost"
@@ -279,7 +282,7 @@ If (!(Get-Content $buildBoostProjectConfig | Select-String -Pattern "cl.exe")) {
     Write-Host "* Patching project-config.jam with $clPath"
     Invoke-SearchReplace $buildBoostProjectConfig "using msvc ;" "`nusing msvc : $env:vsVersion : `"$clPath`";"
 }
-if (!(Test-Path $buildBoostBuildPath\boost)) {
+if (!(Test-Path "$buildBoostBuildPath\boost")) {
     & ./b2 --prefix=$buildBoostPath --build-dir=$buildBoostBuildPath link=static address-model=64 install
 }
 if ($env:PATH -notcontains "$buildBoostBuildPath\bin") {
