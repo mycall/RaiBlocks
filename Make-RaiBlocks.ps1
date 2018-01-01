@@ -19,25 +19,22 @@ $python2path = 'C:\Python27'
 $qtRelease = "5.10"
 $qtReleaseFull = "$qtRelease.0"
 $vsVersion = "2017"
-
+$boostBaseName = "boost_1_66_0"
 $downloads = $(
-
     @{name="WGET";
         url="https://eternallybored.org/misc/wget/releases/wget-1.19.2-win64.zip";
         filename="wget-1.19.2-win64.zip";
         extractPath="$($env:TEMP)\wget"},
-
     @{name="NSIS";
         url="https://downloads.sourceforge.net/project/nsis/NSIS%203/3.02.1/nsis-3.02.1-setup.exe";
         filename="nsis-3.02.1-setup.exe";
         extractPath="$buildPath\nsis";
-        installPath="$((Get-Item "Env:ProgramFiles(x86)").Value)\NSIS\"},
-
+        installPath="$((Get-Item "Env:ProgramFiles(x86)").Value)\NSIS\";
+        addPath="$((Get-Item "Env:ProgramFiles(x86)").Value)\NSIS\bin"},
     @{name="Boost";
-        url="https://dl.bintray.com/boostorg/release/1.66.0/source/boost_1_66_0.zip";
-        filename="boost_1_66_0.zip";
+        url="https://dl.bintray.com/boostorg/release/1.66.0/source/$boostBaseName.zip";
+        filename="$boostBaseName.zip";
         extractPath="$buildPath\boost-src"},
-
     @{name="Qt";
         url="http://download.qt.io/official_releases/qt/$qtRelease/$qtReleaseFull/qt-opensource-windows-x86-$qtReleaseFull.exe";
         filename="qt-opensource-windows-x86-$qtReleaseFull.exe";
@@ -46,20 +43,20 @@ $downloads = $(
         installComment="Please check msvc$vsVersion 64-bit prebuilt components";
         linkedInstallName="qt";
         linkedInstallPath="$qtReleaseFull\msvc$vsVersion`_64";
-},
-
+    },
     #@{name="Qt-src";
     #    url="http://download.qt.io/official_releases/qt/$qtRelease/$qtReleaseFull/single/qt-everywhere-src-$qtReleaseFull.zip";
     #    filename="qt-everywhere-src-$qtReleaseFull.zip";
     #    extractPath="$buildPath\qt-src"},
-
     @{name="Python2";
         url="https://www.python.org/ftp/python/2.7.14/python-2.7.14.amd64.msi";
         filename="python-2.7.14.amd64.msi";
         extractPath="$($env:TEMP)\python2";
-        installPath="$python2path"}
-
+        installPath="$python2path";
+        addPath="$python2path"}
 )
+
+##############################################################################
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Unzip
@@ -86,27 +83,41 @@ function Set-VsCmd
         Push-Location
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio\2017"
         Set-Location $targetDir
-        $vcvars = Get-ChildItem -r VsDevCmd.bat | Resolve-Path -Relative
+        $vcvars = Get-ChildItem -Recurse VsDevCmd.bat | Resolve-Path -Relative
+        $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
+        $env:VS_ARCH = "Visual Studio 15 2017"
         Pop-Location
     }
     elseif ($version -eq 2015)
     {
+        $path = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])"
         $env:vsVersion = $VS_VERSION[$version]
         $env:msvcver="msvc-14.0"
-        $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])\Common7\Tools"
+        Push-Location
+        $targetDir = "$path\Common7\Tools"
+        Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
+        $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
+        $env:VS_ARCH = "Visual Studio 14 2015"
+        Pop-Location
     }
     else
     {
         if ($VS_VERSION -eq 2013) {
             $env:msvcver="msvc-12.0"
+            $env:VS_ARCH = "Visual Studio 12 2013"
         } else {
             $env:msvcver="msvc-11.0"
+            $env:VS_ARCH = "Visual Studio 11 2012"
         }
 
         $env:vsVersion = $VS_VERSION[$version]
+        Push-Location
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
+        Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
+        $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
+        Pop-Location
     }
   
     if (!(Test-Path (Join-Path $targetDir $vcvars))) {
@@ -198,6 +209,8 @@ function exec
     }
 }
 
+##############################################################################
+
 Write-Host "* Building RaiBlocks..."
 
 if (!(Test-Path $rootPath)){
@@ -210,10 +223,10 @@ if (!(Test-Path $repoPath)){
 }
 
 if (!(Test-Path $buildPath)){
-    Write-Host "* Creating working repo into $buildPath"
-    mkdir $buildPath | out-null
-    #Write-Host "* Copying $repoPath into $buildPath"
-    #copy -Recurse $repoPath $buildPath | out-null
+    #Write-Host "* Creating working repo into $buildPath"
+    #mkdir $buildPath | out-null
+    Write-Host "* Creating working repo from $repoPath into $buildPath"
+    copy -Recurse $repoPath $buildPath | out-null
 }
 cd $buildPath
 
@@ -277,7 +290,8 @@ foreach ($file in $downloads){
         New-Item -ItemType SymbolicLink -Name $linkedInstallName -Target $installPath\$linkedInstallPath | out-null
         Pop-Location
     }
-    if ($addPath -ne "") {
+    if (($addPath -ne "") -and (!($env:PATH.Contains($addPath)))) {
+        Write-Host "*   Adding to PATH $addPath"
         $env:PATH="$env:PATH;$addPath"
     }
 }
@@ -286,27 +300,42 @@ foreach ($file in $downloads){
 
 # add python to path
 if ($env:PYTHONPATH -eq $null) {
+    Write-Host "*   Set PYTHONPATH=$python2path"
     $env:PYTHONPATH = $python2path
 }
-if ($env:PATH -notmatch '$python2path') {
-    $env:PATH=”$python2path;$env:PATH"
-}
-
-$buildQtPath = "$buildPath\qt"
-$buildQtSrcPath = "$buildPath\qt-src"
 
 ## setup Visual Studio path
 Set-VsCmd -version $vsVersion
 
+# add cmake to path
+if (!($env:PATH.Contains($env:CMAKE_BIN))) {
+    Write-Host "*   Adding to PATH $env:CMAKE_BIN"
+    $env:PATH="$env:PATH;$env:CMAKE_BIN"
+}
+
 ## Make BOOST
 cd $buildPath\boost-src
 if (!(Test-Path "project-config.jam")) {
+    Write-Host "* Defining BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE in boost\config\user.hpp"
+    Invoke-SearchReplace "$buildPath\boost-src\boost\config\user.hpp" "// define this to locate a compiler config file:" "`n#define BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE`n// define this to locate a compiler config file:"
     & ./bootstrap.bat
 }
+
 $buildBoostPath = "$buildPath\boost"
 $buildBoostBuildPath = "$buildPath\boost-build"
 $buildBoostSrcPath = "$buildPath\boost-src"
 $buildBoostProjectConfig = "$buildBoostSrcPath\project-config.jam"
+$buildQtPath = "$buildPath\qt"
+$buildQtSrcPath = "$buildPath\qt-src"
+
+$env:BOOST_ROOT="$buildBoostSrcPath"
+$env:BOOST_INCLUDE="$buildBoostPath\include"
+$env:BOOST_LIBDIR= "$buildBoostPath\lib"
+$env:Qt5_DIR="$buildQtPath"
+$env:RAIBLOCKS_GUI="ON"
+$env:ENABLE_AVX2="ON"
+$env:CRYPTOPP_CUSTOM="ON"
+
 If (!(Get-Content $buildBoostProjectConfig | Select-String -Pattern "cl.exe")) {
     Write-Host "* Fixing $buildBoostProjectConfig"
     $clPath = Resolve-Anypath cl.exe
@@ -316,24 +345,19 @@ If (!(Get-Content $buildBoostProjectConfig | Select-String -Pattern "cl.exe")) {
 if (!(Test-Path "$buildBoostBuildPath\boost")) {
     & ./b2 --prefix=$buildBoostPath --build-dir=$buildBoostBuildPath link=static address-model=64 install
 }
-if ($env:PATH -notcontains "$buildBoostBuildPath\bin") {
-    $env:PATH="$env:PATH;$buildBoostBuildPath\bin"
-}
+#if ($env:PATH -notcontains "$buildBoostBuildPath\bin") {
+#    $env:PATH="$env:PATH;$buildBoostBuildPath\bin"
+#}
 
-$env:BOOST_ROOT="$buildBoostPath"
-$env:Qt5_DIR="$buildQtPath"
-$env:RAIBLOCKS_GUI="ON"
-$env:ENABLE_AVX2="ON"
-$env:CRYPTOPP_CUSTOM="ON"
-
-## Make Qt if source is prepared
+## Make Qt source when available
 if (Test-Path $buildQtSrcPath) {
     cd $buildQtSrcPath 
     if (!(Test-Path $buildQtPath)) {
-        & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $buildQtPath
+        & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $env:Qt5_DIR
     }
-    & nmake -D BOOST_ROOT="$buildBoostPath" -D Qt5_DIR="$buildQtPath" -D RAIBLOCKS_GUI=ON -D ENABLE_AVX2=ON -D CRYPTOPP_CUSTOM=ON
+    & nmake -D BOOST_ROOT="$env:BOOST_ROOT" -D Qt5_DIR="$env:Qt5_DIR" -D RAIBLOCKS_GUI=ON -D ENABLE_AVX2=ON -D CRYPTOPP_CUSTOM=ON
     & nmake install
 }
 cd $buildPath
 & git submodule update --init --recursive
+cmake -D BOOST_ROOT="$env:BOOST_ROOT" -D Qt5_DIR="$env:Qt5_DIR" -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON -G $env:VS_ARCH
