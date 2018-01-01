@@ -4,7 +4,7 @@
 }
 
 if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
-    Write-Error "** Visual Studio 2012 or newer is required **"
+    Write-Error "** Visual Studio 2012 or newer is required. You need to customize script if not using 2017. **"
     Return
 }
 
@@ -16,6 +16,9 @@ $repoPath = "$rootPath\github"
 $buildPath = "$rootPath\github-build"
 $githubRepo = "https://github.com/clemahieu/raiblocks.git"
 $python2path = 'C:\Python27'
+$qtRelease = "5.10"
+$qtReleaseFull = "$qtRelease.0"
+$vsVersion = "2017"
 
 $downloads = $(
 
@@ -36,9 +39,19 @@ $downloads = $(
         extractPath="$buildPath\boost-src"},
 
     @{name="Qt";
-        url="http://download.qt.io/official_releases/qt/5.10/5.10.0/single/qt-everywhere-src-5.10.0.zip";
-        filename="qt-everywhere-src-5.10.0.zip";
-        extractPath="$buildPath\qt-src"},
+        url="http://download.qt.io/official_releases/qt/$qtRelease/$qtReleaseFull/qt-opensource-windows-x86-$qtReleaseFull.exe";
+        filename="qt-opensource-windows-x86-$qtReleaseFull.exe";
+        installPath="C:\Qt\Qt$qtReleaseFull";
+        addPath="C:\qt\Qt$qtReleaseFull\$qtReleaseFull\msvc$vsVersion`_64\bin;C:\Qt\Qt$qtReleaseFull\Tools\QtCreator\bin";
+        installComment="Please check msvc$vsVersion 64-bit prebuilt components";
+        linkedInstallName="qt";
+        linkedInstallPath="$qtReleaseFull\msvc$vsVersion`_64";
+},
+
+    #@{name="Qt-src";
+    #    url="http://download.qt.io/official_releases/qt/$qtRelease/$qtReleaseFull/single/qt-everywhere-src-$qtReleaseFull.zip";
+    #    filename="qt-everywhere-src-$qtReleaseFull.zip";
+    #    extractPath="$buildPath\qt-src"},
 
     @{name="Python2";
         url="https://www.python.org/ftp/python/2.7.14/python-2.7.14.amd64.msi";
@@ -197,8 +210,10 @@ if (!(Test-Path $repoPath)){
 }
 
 if (!(Test-Path $buildPath)){
-    Write-Host "* Copying $repoPath into $buildPath"
-    copy -Recurse $repoPath $buildPath | out-null
+    Write-Host "* Creating working repo into $buildPath"
+    mkdir $buildPath | out-null
+    #Write-Host "* Copying $repoPath into $buildPath"
+    #copy -Recurse $repoPath $buildPath | out-null
 }
 cd $buildPath
 
@@ -208,6 +223,10 @@ foreach ($file in $downloads){
     $url = "$($file.url)"
     $extractPath = "$($file.extractPath)"
     $installPath = "$($file.installPath)"
+    $linkedInstallName = "$($file.linkedInstallName)"
+    $linkedInstallPath = "$($file.linkedInstallPath)"
+    $installComment = "$($file.installComment)"
+    $addPath = "$($file.addPath)"
     $wget = "$env:TEMP\wget.exe"
     Write-Host "* Checking $name"
     if ($file.deleteBeforeDownload -eq $true -and (Test-Path $filePath)) {
@@ -234,26 +253,38 @@ foreach ($file in $downloads){
     if (($filePath -match ".msi") -or ($filePath -match ".exe")) {
         if ($installPath -ne "" -and !(Test-Path "$installPath")) {
             Write-Host "*   Installing $filepath."
-            exec { & $filePath } | out-string
+            if ($installComment -ne "") {
+                Write-Host "*** $installComment ***"
+            }
+            & $filePath | out-string
         }
     }
-    if (!(Test-Path $extractPath) -and ($filePath.Contains(".zip"))) {
+    if (($filePath -match ".zip") -and (!(Test-Path $extractPath))) {
         Write-Host "*   Unzipping $filePath into $extractPath..."
         Push-Location
         Unzip $filePath $extractPath
         cd $extractPath
-        if (Test-Path *) {
+        if ((Get-ChildItem | ?{ $_.PSIsContainer }).Length -eq 1) {
             cd *
         }
         move -force * ..
         Pop-Location
     }
+    if (($linkedInstallName -ne "") -and (Test-Path "$installPath\$linkedInstallPath") -and (!(Test-Path "$buildPath\$linkedInstallName"))) {
+        Write-Host "*   Creating symbolic link from $buildPath\$linkedInstallName to $installPath\$linkedInstallPath"
+        Push-Location
+        cd $buildPath
+        New-Item -ItemType SymbolicLink -Name $linkedInstallName -Target $installPath\$linkedInstallPath | out-null
+        Pop-Location
+    }
+    if ($addPath -ne "") {
+        $env:PATH="$env:PATH;$addPath"
+    }
 }
 #Write-Host "** Please verify build tools are installed before continuing **"
 #pause
 
-# add python
-
+# add python to path
 if ($env:PYTHONPATH -eq $null) {
     $env:PYTHONPATH = $python2path
 }
@@ -263,11 +294,11 @@ if ($env:PATH -notmatch '$python2path') {
 
 $buildQtPath = "$buildPath\qt"
 $buildQtSrcPath = "$buildPath\qt-src"
-if ($env:PATH -notmatch '$buildQtPath') {
-    $env:PATH="$env:PATH;$buildQtPath"
-}
 
-Set-VsCmd -version 2017
+## setup Visual Studio path
+Set-VsCmd -version $vsVersion
+
+## Make BOOST
 cd $buildPath\boost-src
 if (!(Test-Path "project-config.jam")) {
     & ./bootstrap.bat
@@ -288,16 +319,21 @@ if (!(Test-Path "$buildBoostBuildPath\boost")) {
 if ($env:PATH -notcontains "$buildBoostBuildPath\bin") {
     $env:PATH="$env:PATH;$buildBoostBuildPath\bin"
 }
-cd $buildQtSrcPath 
-if (!(Test-Path $buildQtPath)) {
-    & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $buildQtPath
-}
+
 $env:BOOST_ROOT="$buildBoostPath"
 $env:Qt5_DIR="$buildQtPath"
 $env:RAIBLOCKS_GUI="ON"
 $env:ENABLE_AVX2="ON"
 $env:CRYPTOPP_CUSTOM="ON"
-& nmake -D BOOST_ROOT="$buildBoostPath" -D Qt5_DIR="$buildQtPath" -D RAIBLOCKS_GUI=ON -D ENABLE_AVX2=ON -D CRYPTOPP_CUSTOM=ON
-& nmake install
+
+## Make Qt if source is prepared
+if (Test-Path $buildQtSrcPath) {
+    cd $buildQtSrcPath 
+    if (!(Test-Path $buildQtPath)) {
+        & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $buildQtPath
+    }
+    & nmake -D BOOST_ROOT="$buildBoostPath" -D Qt5_DIR="$buildQtPath" -D RAIBLOCKS_GUI=ON -D ENABLE_AVX2=ON -D CRYPTOPP_CUSTOM=ON
+    & nmake install
+}
 cd $buildPath
 & git submodule update --init --recursive
