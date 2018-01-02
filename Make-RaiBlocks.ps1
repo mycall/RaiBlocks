@@ -1,4 +1,6 @@
-﻿If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
+﻿
+
+If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
     Write-Error "** RUN SCRIPT AS ADMINISTRATOR **"
     Return
 }
@@ -15,7 +17,7 @@ $githubRepo = "https://github.com/clemahieu/raiblocks.git"
 $python2path = 'C:\Python27'
 $qtRelease = "5.10"
 $vsVersion = "2017"
-$boostVersion = "1.63.0"
+$boostVersion = "1.66.0"
 
 $boostBaseName = "boost_" + $boostVersion.Replace(".","_")
 $qtReleaseFull = "$qtRelease.0"
@@ -371,6 +373,7 @@ $buildQtSrcPath = "$buildPath\qt-src"
 $env:BOOST_ROOT="$buildBoostSrcPath"
 $env:BOOST_INCLUDE="$buildBoostPath\include"
 $env:BOOST_LIBDIR= "$buildBoostPath\lib"
+$env:BOOST_LIBRARYDIR== "$buildBoostPath\lib"
 $env:Qt5_DIR="$buildQtPath"
 $env:RAIBLOCKS_GUI="ON"
 $env:ENABLE_AVX2="ON"
