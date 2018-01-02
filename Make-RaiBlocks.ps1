@@ -10,16 +10,19 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
 
 clear
 
-$rootPath = "$env:USERPROFILE\dev\raiblocks"  # change this to development path
-$downloadPath = "$rootpath\downloads"
-$repoPath = "$rootPath\github"
-$buildPath = "$rootPath\github-build"
+$rootPath = "$env:USERPROFILE\projects\raiblocks"  # change this to development path
 $githubRepo = "https://github.com/clemahieu/raiblocks.git"
 $python2path = 'C:\Python27'
 $qtRelease = "5.10"
-$qtReleaseFull = "$qtRelease.0"
 $vsVersion = "2017"
-$boostBaseName = "boost_1_66_0"
+$boostVersion = "1.63.0"
+
+$boostBaseName = "boost_" + $boostVersion.Replace(".","_")
+$qtReleaseFull = "$qtRelease.0"
+$downloadPath = "$rootpath\downloads"
+$repoPath = "$rootPath\github"
+$buildPath = "$rootPath\github-build"
+
 $downloads = $(
     @{name="WGET";
         url="https://eternallybored.org/misc/wget/releases/wget-1.19.2-win64.zip";
@@ -32,7 +35,7 @@ $downloads = $(
         installPath="$((Get-Item "Env:ProgramFiles(x86)").Value)\NSIS\";
         addPath="$((Get-Item "Env:ProgramFiles(x86)").Value)\NSIS\bin"},
     @{name="Boost";
-        url="https://dl.bintray.com/boostorg/release/1.66.0/source/$boostBaseName.zip";
+        url="https://dl.bintray.com/boostorg/release/$boostVersion/source/$boostBaseName.zip";
         filename="$boostBaseName.zip";
         extractPath="$buildPath\boost-src"},
     @{name="Qt";
@@ -209,6 +212,43 @@ function exec
     }
 }
 
+function Pack-EnvPath {
+    return
+    $latestTs = dir "C:\Program Files (x86)\Microsoft SDKs\TypeScript\" | Sort | Select -last 1 $($_.Name)
+    $fso = New-Object -ComObject "Scripting.FileSystemObject"
+    $shortpaths = @();
+    $originalPaths = [environment]::GetEnvironmentVariable("path", "Machine").Split(";")
+    foreach ($path in $originalPaths) {
+        $fpath = [System.IO.Path]::GetFullPath("$path");
+        if ($fpath.StartsWith('C:\Program Files (x86)\Microsoft SDKs\TypeScript\')) {
+            $fpath = "C:\Program Files (x86)\Microsoft SDKs\TypeScript\$latestTs\";
+        }
+        $fspath = $fso.GetFolder("$fpath").ShortPath;
+        $foundIdx = $shortpaths.IndexOf($fspath);
+        if ($foundIdx -gt -1) {	continue; }
+        write-host $fpath  -->  $fspath;
+        $shortpaths += $fspath;
+    }
+    $env:Path = $($shortpaths -join ";");
+}
+
+function Add-EnvPath {
+    param
+    (
+        [string] $Item = "",
+        [bool] $Append = $true
+    )
+    Pack-EnvPath
+    if ($Append -eq $true) {
+        $env:PATH="$env:PATH;$Item"
+    }
+    else {
+        $env:PATH="$Item;$env:PATH"
+    }
+    Pack-EnvPath    
+}
+
+
 ##############################################################################
 
 Write-Host "* Building RaiBlocks..."
@@ -292,7 +332,7 @@ foreach ($file in $downloads){
     }
     if (($addPath -ne "") -and (!($env:PATH.Contains($addPath)))) {
         Write-Host "*   Adding to PATH $addPath"
-        $env:PATH="$env:PATH;$addPath"
+        Add-EnvPath -Item $addPath
     }
 }
 #Write-Host "** Please verify build tools are installed before continuing **"
@@ -310,7 +350,7 @@ Set-VsCmd -version $vsVersion
 # add cmake to path
 if (!($env:PATH.Contains($env:CMAKE_BIN))) {
     Write-Host "*   Adding to PATH $env:CMAKE_BIN"
-    $env:PATH="$env:PATH;$env:CMAKE_BIN"
+    Add-EnvPath -Item $env:CMAKE_BIN
 }
 
 ## Make BOOST
@@ -345,9 +385,6 @@ If (!(Get-Content $buildBoostProjectConfig | Select-String -Pattern "cl.exe")) {
 if (!(Test-Path "$buildBoostBuildPath\boost")) {
     & ./b2 --prefix=$buildBoostPath --build-dir=$buildBoostBuildPath link=static address-model=64 install
 }
-#if ($env:PATH -notcontains "$buildBoostBuildPath\bin") {
-#    $env:PATH="$env:PATH;$buildBoostBuildPath\bin"
-#}
 
 ## Make Qt source when available
 if (Test-Path $buildQtSrcPath) {
@@ -359,5 +396,6 @@ if (Test-Path $buildQtSrcPath) {
     & nmake install
 }
 cd $buildPath
-& git submodule update --init --recursive
-cmake -D BOOST_ROOT="$env:BOOST_ROOT" -D Qt5_DIR="$env:Qt5_DIR" -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON -G $env:VS_ARCH
+exec { & git submodule update --init --recursive }
+#cmake -D BOOST_ROOT="$env:BOOST_ROOT" -D Qt5_DIR="$env:Qt5_DIR" -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON -G $env:VS_ARCH
+cmake -G $env:VS_ARCH
