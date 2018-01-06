@@ -16,6 +16,7 @@ $python2path = 'C:\Python27'
 $qtRelease = "5.10"
 $vsVersion = "2017"
 $boostVersion = "1.66.0"
+$bitness = "64"
 
 $boostBaseName = "boost_" + $boostVersion.Replace(".","_")
 $qtReleaseFull = "$qtRelease.0"
@@ -127,6 +128,10 @@ function Set-VsCmd
         "* Error: Visual Studio $version not installed"
         return
     }
+    if ($bitness -eq "64") { 
+        $vcvars += " -arch=amd64 -host_arch=amd64"
+    }
+    $env:VSCMD_DEBUG="2"
     Write-host "* Running $targetDir $vcvars"
     Push-Location $targetDir
     cmd /c $vcvars + "&set" |
@@ -142,11 +147,11 @@ function Set-VsCmd
 
 function Resolve-Anypath
 {
-    param ($file)
+    param ($file, $find)
     $paths = (".;" + $env:PATH).Split(";")
     foreach ($path in $paths) {
         $testPath = Join-Path $path $file
-        if (Test-Path $testPath) {
+        if ((Test-Path $testPath) -and ($testPath -match $find)) {
             return ($testPath)
         }
     }
@@ -362,8 +367,8 @@ $env:BOOST_TARGET_ROOT=$env:BOOST_ROOT
 $env:BOOST_BUILD_CONFIG="--debug-configuration  --debug-building --debug-generators -d 5"
 
 $env:BOOST_INCLUDE="$env:BOOST_ROOT\include"
-$env:BOOST_LIBDIR="$env:BOOST_ROOT\lib"
-$env:BOOST_LIBRARYDIR="$env:BOOST_ROOT\lib"
+$env:BOOST_LIBDIR="$env:BOOST_ROOT\libs"
+$env:BOOST_LIBRARYDIR="$env:BOOST_ROOT\libs"
 $env:Qt5_DIR=$buildQtPath
 $env:RAIBLOCKS_GUI="ON"
 $env:ENABLE_AVX2="ON"
@@ -381,7 +386,7 @@ $env:BOOST_LINK = "static"
 $boostBuildDir = "$env:BOOST_BUILD_ROOT\build"
 $boostPrefixDir = "$env:BOOST_TARGET_ROOT"
 $boostIncludeDir = "$env:BOOST_TARGET_ROOT\include"
-$boostLibDir = "$env:BOOST_TARGET_ROOT\lib"
+$boostLibDir = "$env:BOOST_TARGET_ROOT\libs"
 $boostBinPath = "$env:BOOST_ROOT\bin"
 $boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
 
@@ -407,15 +412,17 @@ if (!(Test-Path "project-config.jam")) {
 
 If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     Write-Host "* Fixing $boostProjectConfig"
-    $clPath = Resolve-Anypath cl.exe
+    $clPath = Resolve-Anypath -file  "cl.exe" -find $bitness
     Write-Host "* Patching project-config.jam with $clPath"
-    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "`nusing msvc : $env:vsVersion : `"$clPath`";"
+    $clPathReplace = $clPath.Replace("\", "\\")
+    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "`nusing msvc : $env:vsVersion : `"$clPathReplace`";"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
     & ./b2 --build-dir=$boostBuildDir --prefix=$boostPrefixDir --includedir=$boostIncludeDir --libdir=$boostLibDir `
-        --with-python --build-type=complete $env:BOOST_BUILD_CONFIG threading=$env:BOOST_THEADING `
-        runtime-link=$env:BOOST_RUNTIME_LINK link=$env:BOOST_LINK toolset=$env:msvcver $env:B2_DEFINES `
-        address-model=64 stage install
+        --with-python --with-date_time --with-filesystem --with-system --with-log --with-log_setup --with-thread --with-program_options --with-regex --with-chrono --with-atomic `
+        $env:BOOST_BUILD_CONFIG $env:B2_DEFINES `
+        threading=$env:BOOST_THEADING link=$env:BOOST_LINK runtime-link=$env:BOOST_RUNTIME_LINK toolset=$env:msvcver address-model=$bitness `
+        --build-type=complete stage install
 }
 
 ## Make Qt source when available
@@ -431,7 +438,7 @@ cd $buildPath
 exec { & git submodule update --init --recursive }
 mkdir build
 cd build
-#cmake -D BOOST_ROOT="$env:BOOST_ROOT" -D Qt5_DIR="$env:Qt5_DIR" -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON -G $env:VS_ARCH
+
 exec { & cmake -G $env:VS_ARCH -DBOOST_DEBUG=ON -DBOOST_ROOT="$env:BOOST_ROOT" -DQt5_DIR="$env:Qt5_DIR" -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON .. }
 #make rai_node
 
