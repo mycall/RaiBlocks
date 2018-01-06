@@ -1,6 +1,4 @@
-﻿
-
-If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
+﻿If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
     Write-Error "** RUN SCRIPT AS ADMINISTRATOR **"
     Return
 }
@@ -39,7 +37,7 @@ $downloads = $(
     @{name="Boost";
         url="https://dl.bintray.com/boostorg/release/$boostVersion/source/$boostBaseName.zip";
         filename="$boostBaseName.zip";
-        extractPath="$buildPath\boost-src"},
+        extractPath="$buildPath\boost"},
     @{name="Qt";
         url="http://download.qt.io/official_releases/qt/$qtRelease/$qtReleaseFull/qt-opensource-windows-x86-$qtReleaseFull.exe";
         filename="qt-opensource-windows-x86-$qtReleaseFull.exe";
@@ -253,7 +251,8 @@ function Add-EnvPath {
 
 ##############################################################################
 
-Write-Host "* Building RaiBlocks..."
+Write-Host "* Preparing RaiBlocks build tools..."
+
 
 if (!(Test-Path $rootPath)){
     mkdir $rootPath | out-null
@@ -337,8 +336,13 @@ foreach ($file in $downloads){
         Add-EnvPath -Item $addPath
     }
 }
+
+##############################################################################
+
 #Write-Host "** Please verify build tools are installed before continuing **"
 #pause
+
+Write-Host "* Building RaiBlocks..."
 
 # add python to path
 if ($env:PYTHONPATH -eq $null) {
@@ -349,35 +353,57 @@ if ($env:PYTHONPATH -eq $null) {
 ## setup Visual Studio path
 Set-VsCmd -version $vsVersion
 
+$buildQtPath = "$buildPath\qt"
+$buildQtSrcPath = "$buildPath\qt-src"
+
+$env:BOOST_ROOT="$buildPath\boost"
+$env:BOOST_BUILD_ROOT=$env:BOOST_ROOT
+$env:BOOST_TARGET_ROOT=$env:BOOST_ROOT
+$env:BOOST_BUILD_CONFIG="--debug-configuration  --debug-building --debug-generators -d 5"
+$env:BOOST_INCLUDE="$env:BOOST_ROOT"
+$env:BOOST_LIBDIR="$env:BOOST_ROOT\boost\lib"
+$env:BOOST_LIBRARYDIR="$env:BOOST_ROOT\boost\lib"
+$env:Qt5_DIR=$buildQtPath
+$env:RAIBLOCKS_GUI="ON"
+$env:ENABLE_AVX2="ON"
+$env:CRYPTOPP_CUSTOM="ON"
+
+$boostBuildDir = "$env:BOOST_BUILD_ROOT\build"
+$boostPrefixDir = "$env:BOOST_TARGET_ROOT"
+$boostIncludeDir = "$env:BOOST_TARGET_ROOT\include"
+$boostLibDir = "$env:BOOST_TARGET_ROOT\lib"
+$env:BOOST_THEADING = "multi"
+$env:BOOST_RUNTIME_LINK = "static"    # (static|shared)
+$env:BOOST_LINK = "static"
+
+if ($env:BOOST_LINK -eq "static") {
+    set $env:B2_DEFINES = "define=BOOST_TEST_NO_MAIN define=BOOST_TEST_ALTERNATIVE_INIT_API"
+} else {
+    set $env:B2_DEFINES = ""
+}
+
+$buildBoostBinPath = "$env:BOOST_ROOT\bin"
+$buildBoostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
+
 # add cmake to path
 if (!($env:PATH.Contains($env:CMAKE_BIN))) {
     Write-Host "*   Adding to PATH $env:CMAKE_BIN"
     Add-EnvPath -Item $env:CMAKE_BIN
 }
 
-## Make BOOST
-cd $buildPath\boost-src
-if (!(Test-Path "project-config.jam")) {
-    Write-Host "* Defining BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE in boost\config\user.hpp"
-    Invoke-SearchReplace "$buildPath\boost-src\boost\config\user.hpp" "// define this to locate a compiler config file:" "`n#define BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE`n// define this to locate a compiler config file:"
-    & ./bootstrap.bat
+# add Boost.Build\bin to path
+if (!($env:PATH.Contains($buildBoostBinPath))) {
+    Write-Host "*   Adding to PATH $buildBoostBinPath"
+    Add-EnvPath -Item $buildBoostBinPath
 }
 
-$buildBoostPath = "$buildPath\boost"
-$buildBoostBuildPath = "$buildPath\boost-build"
-$buildBoostSrcPath = "$buildPath\boost-src"
-$buildBoostProjectConfig = "$buildBoostSrcPath\project-config.jam"
-$buildQtPath = "$buildPath\qt"
-$buildQtSrcPath = "$buildPath\qt-src"
-
-$env:BOOST_ROOT="$buildBoostSrcPath"
-$env:BOOST_INCLUDE="$buildBoostPath\include"
-$env:BOOST_LIBDIR= "$buildBoostPath\lib"
-$env:BOOST_LIBRARYDIR== "$buildBoostPath\lib"
-$env:Qt5_DIR="$buildQtPath"
-$env:RAIBLOCKS_GUI="ON"
-$env:ENABLE_AVX2="ON"
-$env:CRYPTOPP_CUSTOM="ON"
+## Make BOOST
+cd $env:BOOST_ROOT
+if (!(Test-Path "project-config.jam")) {
+    Write-Host "* Defining BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE in boost\config\user.hpp"
+    Invoke-SearchReplace "$env:BOOST_ROOT\boost\config\user.hpp" "// define this to locate a compiler config file:" "`n#define BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE`n// define this to locate a compiler config file:"
+    & ./bootstrap.bat --with-libraries=python
+}
 
 If (!(Get-Content $buildBoostProjectConfig | Select-String -Pattern "cl.exe")) {
     Write-Host "* Fixing $buildBoostProjectConfig"
@@ -385,8 +411,11 @@ If (!(Get-Content $buildBoostProjectConfig | Select-String -Pattern "cl.exe")) {
     Write-Host "* Patching project-config.jam with $clPath"
     Invoke-SearchReplace $buildBoostProjectConfig "using msvc ;" "`nusing msvc : $env:vsVersion : `"$clPath`";"
 }
-if (!(Test-Path "$buildBoostBuildPath\boost")) {
-    & ./b2 --prefix=$buildBoostPath --build-dir=$buildBoostBuildPath link=static address-model=64 install
+if (!(Test-Path "$boostBuildDir\boost")) {
+    & ./b2 --build-dir=$boostBuildDir --prefix=$boostPrefixDir --includedir=$boostIncludeDir --libdir=$boostLibDir `
+        --with-python --build-type=complete $env:BOOST_BUILD_CONFIG threading=$env:BOOST_THEADING `
+        runtime-link=$env:BOOST_RUNTIME_LINK link=$env:BOOST_LINK toolset=$env:msvcver $env:B2_DEFINES `
+        stage install address-model=64 install
 }
 
 ## Make Qt source when available
@@ -400,5 +429,8 @@ if (Test-Path $buildQtSrcPath) {
 }
 cd $buildPath
 exec { & git submodule update --init --recursive }
+mkdir build
+cd build
 #cmake -D BOOST_ROOT="$env:BOOST_ROOT" -D Qt5_DIR="$env:Qt5_DIR" -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON -G $env:VS_ARCH
-cmake -G $env:VS_ARCH
+exec { & cmake -G $env:VS_ARCH -DBOOST_DEBUG=ON -DBOOST_ROOT="$env:BOOST_ROOT" -DQt5_DIR="$env:Qt5_DIR" -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON .. }
+#make rai_node
