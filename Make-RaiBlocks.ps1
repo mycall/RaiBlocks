@@ -258,7 +258,12 @@ function Add-EnvPath {
 
 Write-Host "* Preparing RaiBlocks build tools..."
 
+if ($env:PATH_BACKUP -ne $null) {
+    $env:PATH = $env:PATH_BACKUP
+}
 $env:PATH_BACKUP = $env:PATH
+
+
 if (!(Test-Path $rootPath)){
     mkdir $rootPath | out-null
 }
@@ -364,10 +369,7 @@ $buildQtSrcPath = "$buildPath\qt-src"
 $env:BOOST_ROOT="$buildPath\boost"
 $env:BOOST_BUILD_ROOT=$env:BOOST_ROOT
 $env:BOOST_TARGET_ROOT=$env:BOOST_ROOT
-$env:BOOST_BUILD_CONFIG="--debug-configuration  --debug-building --debug-generators -d 5"
-$env:BOOST_INCLUDE="$env:BOOST_ROOT\include"
-$env:BOOST_LIBDIR="$env:BOOST_ROOT\libs"
-$env:BOOST_LIBRARYDIR="$env:BOOST_ROOT\libs"
+$env:BOOST_BUILD_CONFIG=""   # "--debug-configuration --debug-building --debug-generators -d 5"
 $env:Qt5_DIR=$buildQtPath
 $env:RAIBLOCKS_GUI="ON"
 $env:ENABLE_AVX2="ON"
@@ -375,18 +377,12 @@ $env:CRYPTOPP_CUSTOM="ON"
 $env:BOOST_THEADING = "multi"
 $env:BOOST_RUNTIME_LINK = "static"    # (static|shared)
 $env:BOOST_LINK = "static"
-$env:B2_DEFINES = ""
-
-#if ($env:BOOST_LINK -eq "static") {
-#    $env:B2_DEFINES = "define=BOOST_TEST_NO_MAIN define=BOOST_TEST_ALTERNATIVE_INIT_API"
-#} else {
-#    $env:B2_DEFINES = ""
-#}
 
 $boostBuildDir = "$env:BOOST_BUILD_ROOT\build"
 $boostPrefixDir = "$env:BOOST_TARGET_ROOT"
 $boostIncludeDir = "$env:BOOST_TARGET_ROOT\include"
 $boostLibDir = "$env:BOOST_TARGET_ROOT\libs"
+#$boostLibDir = "$env:BOOST_TARGET_ROOT\stage\lib"
 $boostBinPath = "$env:BOOST_ROOT\bin"
 $boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
 
@@ -406,22 +402,26 @@ if (!($env:PATH.Contains($boostBinPath))) {
 cd $env:BOOST_ROOT
 if (!(Test-Path "project-config.jam")) {
     Write-Host "* Defining BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE in boost\config\user.hpp"
-    Invoke-SearchReplace "$env:BOOST_ROOT\boost\config\user.hpp" "// define this to locate a compiler config file:" "`n#define BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE`n// define this to locate a compiler config file:"
-    & ./bootstrap.bat --with-libraries=date_time,filesystem,system,log,thread,program_options,regex,chrono,atomic,python
+    Invoke-SearchReplace "$env:BOOST_ROOT\boost\config\user.hpp" "// define this to locate a compiler config file:" "#define BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE`n// define this to locate a compiler config file:"
+    & ./bootstrap.bat 
+    # use these if not building "complete" --with-libraries=date_time,filesystem,system,log,thread,program_options,regex,chrono,atomic,python
 }
 
 If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
-    Write-Host "* Fixing $boostProjectConfig"
-    $clPath = Resolve-Anypath -file  "cl.exe" -find $bitness
+    #Write-Host "* Fixing $boostProjectConfig"
+    #$clPath = Resolve-Anypath -file  "cl.exe" -find $bitness
     Write-Host "* Patching project-config.jam with $clPath"
     $clPathReplace = $clPath.Replace("\", "\\")
-    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";"
+    #Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";"
+    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
     & ./b2 --build-dir=$boostBuildDir --prefix=$boostPrefixDir --includedir=$boostIncludeDir --libdir=$boostLibDir `
-        $env:BOOST_BUILD_CONFIG $env:B2_DEFINES `
-        variant=debug,release threading=$env:BOOST_THEADING link=$env:BOOST_LINK runtime-link=$env:BOOST_RUNTIME_LINK toolset=$env:msvcver address-model=$bitness `
+        $env:BOOST_BUILD_CONFIG  `
+        variant=debug,release link=$env:BOOST_LINK runtime-link=$env:BOOST_RUNTIME_LINK toolset=$env:msvcver `
         --build-type=complete stage install
+         # address-model=$bitness
+         # threading=$env:BOOST_THEADING 
 }
 
 ## Make Qt source when available
@@ -430,10 +430,11 @@ if (Test-Path $buildQtSrcPath) {
     if (!(Test-Path $buildQtPath)) {
         & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $env:Qt5_DIR
     }
-    & cmake -DBOOST_ROOT="$env:BOOST_ROOT" -DQt5_DIR="$env:Qt5_DIR" -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON
+    & cmake 
     & cmake install
 }
 cd $buildPath
+
 
 If (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "Boost $boostVersion")) {
     Write-Host "* Fixing CMakeLists.txt with Boost $boostVersion"
@@ -441,10 +442,13 @@ If (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "Boost $boostVersion
 }
 
 exec { & git submodule update --init --recursive }
-mkdir build
+if (Test-Path build) {
+    rm -Force -Recurse build
+}
+mkdir build | out-null
 cd build
 
-exec { & cmake -G $env:VS_ARCH -DBOOST_DEBUG=ON -DBOOST_ROOT="$env:BOOST_ROOT" -DQt5_DIR="$env:Qt5_DIR" -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ../CMakeLists.txt }
+& cmake -G "$($env:VS_ARCH)" -DBOOST_ROOT="$($env:BOOST_ROOT)" -DBOOST_INCLUDEDIR="$($boostIncludeDir)" -DBOOST_LIBRARYDIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
 #make rai_node
 
-#$env:PATH = $env:PATH_BACKUP
+$env:PATH = $env:PATH_BACKUP
