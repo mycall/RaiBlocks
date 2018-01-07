@@ -16,7 +16,7 @@ $python2path = 'C:\Python27'
 $qtRelease = "5.10"
 $vsVersion = "2017"
 $boostVersion = "1.66.0"
-$bitness = "64"
+$bitness = "32"
 
 $boostBaseName = "boost_" + $boostVersion.Replace(".","_")
 $qtReleaseFull = "$qtRelease.0"
@@ -59,6 +59,30 @@ $downloads = $(
         installPath="$python2path";
         addPath="$python2path"}
 )
+
+$buildQtPath = "$buildPath\qt"
+$buildQtSrcPath = "$buildPath\qt-src"
+
+$env:BOOST_ROOT="$buildPath\boost"
+$env:BOOST_BUILD_ROOT=$env:BOOST_ROOT
+$env:BOOST_TARGET_ROOT=$env:BOOST_ROOT
+$env:BOOST_BUILD_CONFIG=""   # "--debug-configuration --debug-building --debug-generators -d 5"
+$env:Qt5_DIR=$buildQtPath
+$env:RAIBLOCKS_GUI="ON"
+$env:ENABLE_AVX2="ON"
+$env:CRYPTOPP_CUSTOM="ON"
+$env:BOOST_THEADING = "multi"
+$env:BOOST_RUNTIME_LINK = "static"    # (static|shared)
+$env:BOOST_LINK = "static"
+$env:ADDRESS_MODEL = ""
+
+$boostBuildDir = "$env:BOOST_BUILD_ROOT\build"
+$boostPrefixDir = "$env:BOOST_TARGET_ROOT"
+$boostIncludeDir = "$env:BOOST_TARGET_ROOT\include"
+$boostLibDir = "$env:BOOST_TARGET_ROOT\libs"
+#$boostLibDir = "$env:BOOST_TARGET_ROOT\stage\lib"
+$boostBinPath = "$env:BOOST_ROOT\bin"
+$boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
 
 ##############################################################################
 
@@ -131,6 +155,7 @@ function Set-VsCmd
     if ($bitness -eq "64") { 
         $vcvars += " -arch=amd64 -host_arch=amd64"
         $env:VS_ARCH += " Win64"
+        $env:ADDRESS_MODEL = "address-model=64"
     }
     Write-host "* Running $targetDir $vcvars"
     Push-Location $targetDir
@@ -363,29 +388,6 @@ if ($env:PYTHONPATH -eq $null) {
 ## setup Visual Studio path
 Set-VsCmd -version $vsVersion
 
-$buildQtPath = "$buildPath\qt"
-$buildQtSrcPath = "$buildPath\qt-src"
-
-$env:BOOST_ROOT="$buildPath\boost"
-$env:BOOST_BUILD_ROOT=$env:BOOST_ROOT
-$env:BOOST_TARGET_ROOT=$env:BOOST_ROOT
-$env:BOOST_BUILD_CONFIG=""   # "--debug-configuration --debug-building --debug-generators -d 5"
-$env:Qt5_DIR=$buildQtPath
-$env:RAIBLOCKS_GUI="ON"
-$env:ENABLE_AVX2="ON"
-$env:CRYPTOPP_CUSTOM="ON"
-$env:BOOST_THEADING = "multi"
-$env:BOOST_RUNTIME_LINK = "static"    # (static|shared)
-$env:BOOST_LINK = "static"
-
-$boostBuildDir = "$env:BOOST_BUILD_ROOT\build"
-$boostPrefixDir = "$env:BOOST_TARGET_ROOT"
-$boostIncludeDir = "$env:BOOST_TARGET_ROOT\include"
-$boostLibDir = "$env:BOOST_TARGET_ROOT\libs"
-#$boostLibDir = "$env:BOOST_TARGET_ROOT\stage\lib"
-$boostBinPath = "$env:BOOST_ROOT\bin"
-$boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
-
 # add cmake to path
 if (!($env:PATH.Contains($env:CMAKE_BIN))) {
     Write-Host "*   Adding to PATH $env:CMAKE_BIN"
@@ -416,12 +418,11 @@ If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
-    & ./b2 --build-dir=$boostBuildDir --prefix=$boostPrefixDir --includedir=$boostIncludeDir --libdir=$boostLibDir `
-        $env:BOOST_BUILD_CONFIG  `
-        variant=debug,release link=$env:BOOST_LINK runtime-link=$env:BOOST_RUNTIME_LINK toolset=$env:msvcver `
-        --build-type=complete stage install
-         # address-model=$bitness
-         # threading=$env:BOOST_THEADING 
+    & ./b2 --build-dir="$($boostBuildDir)" --prefix="$($boostPrefixDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" `
+        $($env:BOOST_BUILD_CONFIG)  `
+        variant=debug,release link="$($env:BOOST_LINK)" threading="$($env:BOOST_THEADING)" runtime-link="$($env:BOOST_RUNTIME_LINK)" toolset="$($env:msvcver)" "$($env:ADDRESS_MODEL)" `
+        --build-type=complete install
+         #
 }
 
 ## Make Qt source when available
@@ -448,7 +449,7 @@ if (Test-Path build) {
 mkdir build | out-null
 cd build
 
-& cmake -G "$($env:VS_ARCH)" -DBOOST_ROOT="$($env:BOOST_ROOT)" -DBOOST_INCLUDEDIR="$($boostIncludeDir)" -DBOOST_LIBRARYDIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
+cmake -G "$($env:VS_ARCH)" -DBOOST_ROOT="$($env:BOOST_ROOT)" -DBOOST_INCLUDEDIR="$($boostIncludeDir)" -DBOOST_LIBRARYDIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
 #make rai_node
 
 $env:PATH = $env:PATH_BACKUP
