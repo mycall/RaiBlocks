@@ -10,13 +10,13 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
 
 clear
 
-$rootPath = "$env:USERPROFILE\projects\raiblocks"  # change this to development path
+$rootPath = "$env:USERPROFILE\Projects\RaiBlocks"  # change this to your preferred development path
 $githubRepo = "https://github.com/clemahieu/raiblocks.git"
 $python2path = 'C:\Python27'
 $qtRelease = "5.10"
 $vsVersion = "2017"
 $boostVersion = "1.66.0"
-$bitness = "32"
+$bitness = "64"
 
 $boostBaseName = "boost_" + $boostVersion.Replace(".","_")
 $qtReleaseFull = "$qtRelease.0"
@@ -412,17 +412,17 @@ if (!(Test-Path "project-config.jam")) {
 If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     #Write-Host "* Fixing $boostProjectConfig"
     #$clPath = Resolve-Anypath -file  "cl.exe" -find $bitness
-    Write-Host "* Patching project-config.jam with $clPath"
-    $clPathReplace = $clPath.Replace("\", "\\")
+    #Write-Host "* Patching project-config.jam with $clPath"
+    #$clPathReplace = $clPath.Replace("\", "\\")
     #Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";"
     Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
     & ./b2 --build-dir="$($boostBuildDir)" --prefix="$($boostPrefixDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" `
         $($env:BOOST_BUILD_CONFIG)  `
-        variant=debug,release link="$($env:BOOST_LINK)" threading="$($env:BOOST_THEADING)" runtime-link="$($env:BOOST_RUNTIME_LINK)" toolset="$($env:msvcver)" "$($env:ADDRESS_MODEL)" `
+        link="$($env:BOOST_LINK)" threading="$($env:BOOST_THEADING)" runtime-link="$($env:BOOST_RUNTIME_LINK)" toolset="$($env:msvcver)" "$($env:ADDRESS_MODEL)" `
         --build-type=complete install
-         #
+         #variant=debug,release 
 }
 
 ## Make Qt source when available
@@ -449,7 +449,7 @@ if (Test-Path build) {
 mkdir build | out-null
 cd build
 
-cmake -G "$($env:VS_ARCH)" -DBOOST_ROOT="$($env:BOOST_ROOT)" -DBOOST_INCLUDEDIR="$($boostIncludeDir)" -DBOOST_LIBRARYDIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
+cmake "-G$($env:VS_ARCH)" -DBOOST_ROOT="$($env:BOOST_ROOT)" -DBoost_INCLUDE_DIR="$($boostIncludeDir)" -DBoost_LIBRARY_DIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
 #make rai_node
 
 $env:PATH = $env:PATH_BACKUP
