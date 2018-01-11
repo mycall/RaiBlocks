@@ -19,6 +19,7 @@ $boostVersion = "1.66.0"
 $bitness = "64"
 
 $boostBaseName = "boost_" + $boostVersion.Replace(".","_")
+$boostBaseNameShort = $boostBaseName.Replace(".0","")
 $qtReleaseFull = "$qtRelease.0"
 $downloadPath = "$rootpath\downloads"
 $repoPath = "$rootPath\github"
@@ -74,11 +75,11 @@ $env:CRYPTOPP_CUSTOM="ON"
 $env:BOOST_THEADING = "multi"
 $env:BOOST_RUNTIME_LINK = "static"    # (static|shared)
 $env:BOOST_LINK = "static"
-$env:ADDRESS_MODEL = ""
+$env:ADDRESS_MODEL = "address-mode=32"
 
 $boostBuildDir = "$env:BOOST_BUILD_ROOT\build"
 $boostPrefixDir = "$env:BOOST_TARGET_ROOT"
-$boostIncludeDir = "$env:BOOST_TARGET_ROOT\include"
+$boostIncludeDir = "$env:BOOST_TARGET_ROOT\include\$boostBaseNameShort\boost"
 $boostLibDir = "$env:BOOST_TARGET_ROOT\libs"
 #$boostLibDir = "$env:BOOST_TARGET_ROOT\stage\lib"
 $boostBinPath = "$env:BOOST_ROOT\bin"
@@ -153,6 +154,7 @@ function Set-VsCmd
         return
     }
     if ($bitness -eq "64") { 
+        Write-Host "*   Setting 64-bit mode"
         $vcvars += " -arch=amd64 -host_arch=amd64"
         $env:VS_ARCH += " Win64"
         $env:ADDRESS_MODEL = "address-model=64"
@@ -418,10 +420,11 @@ If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
-    & ./b2 --build-dir="$($boostBuildDir)" --prefix="$($boostPrefixDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" `
+    & ./b2 install --prefix="$($boostPrefixDir)"
+    & ./b2 --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned `
         $($env:BOOST_BUILD_CONFIG)  `
-        link="$($env:BOOST_LINK)" threading="$($env:BOOST_THEADING)" runtime-link="$($env:BOOST_RUNTIME_LINK)" toolset="$($env:msvcver)" "$($env:ADDRESS_MODEL)" `
-        --build-type=complete install
+        link="$($env:BOOST_LINK)" runtime-link="$($env:BOOST_RUNTIME_LINK)" threading="$($env:BOOST_THEADING)" toolset="$($env:msvcver)" "$($env:ADDRESS_MODEL)" `
+        --build-type=complete msvc release stage
          #variant=debug,release 
 }
 
@@ -449,7 +452,8 @@ if (Test-Path build) {
 mkdir build | out-null
 cd build
 
-cmake "-G$($env:VS_ARCH)" -DBOOST_ROOT="$($env:BOOST_ROOT)" -DBoost_INCLUDE_DIR="$($boostIncludeDir)" -DBoost_LIBRARY_DIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
+cmake -DBOOST_ROOT="$($env:BOOST_ROOT)" -D Boost_INCLUDE_DIR="$($boostIncludeDir)" -DBoost_LIBRARY_DIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
+#cmake -G "$($env:VS_ARCH)" -DBOOST_ROOT="$($env:BOOST_ROOT)" -D Boost_INCLUDE_DIR="$($boostIncludeDir)" -DBoost_LIBRARY_DIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
 #make rai_node
 
-$env:PATH = $env:PATH_BACKUP
+#$env:PATH = $env:PATH_BACKUP
