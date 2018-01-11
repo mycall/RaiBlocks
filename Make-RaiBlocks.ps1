@@ -424,17 +424,15 @@ If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     #Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
-    Write-Host "*   b2 part 1"
-    & ./b2 install --prefix="$($boostPrefixDir)"
-    Write-Host "*   b2 part 2"
-    exec { & ./b2 --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned --build-type=complete msvc `
+    exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned `
         architecture=x86 `
         toolset="$($env:msvcver)" `
         variant=debug `
         link="$($env:BOOST_LINK)" `
         $(if ($env:BOOST_RUNTIME_LINK -ne $null){"runtime-link=$($env:BOOST_RUNTIME_LINK)"}Else{""}) `
         $(if ($env:BOOST_THEADING -ne $null){"threading=$($env:BOOST_THEADING)"}Else{""}) `
-        "$($env:ADDRESS_MODEL)" }
+        $($env:ADDRESS_MODEL) `
+        --build-type=complete msvc install }
 }
 
 ## Make Qt source when available
