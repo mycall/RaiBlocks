@@ -19,7 +19,7 @@ $boostVersion = "1.66.0"
 $bitness = "64"
 
 $boostBaseName = "boost_" + $boostVersion.Replace(".","_")
-$boostBaseNameShort = $boostBaseName.Replace(".0","")
+$boostBaseNameShort = "boost-" + $boostVersion.Replace(".0","").Replace(".","_")
 $qtReleaseFull = "$qtRelease.0"
 $downloadPath = "$rootpath\downloads"
 $repoPath = "$rootPath\github"
@@ -67,21 +67,22 @@ $buildQtSrcPath = "$buildPath\qt-src"
 $env:BOOST_ROOT="$buildPath\boost"
 $env:BOOST_BUILD_ROOT=$env:BOOST_ROOT
 $env:BOOST_TARGET_ROOT=$env:BOOST_ROOT
-$env:BOOST_BUILD_CONFIG=""   # "--debug-configuration --debug-building --debug-generators -d 5"
 $env:Qt5_DIR=$buildQtPath
 $env:RAIBLOCKS_GUI="ON"
 $env:ENABLE_AVX2="ON"
 $env:CRYPTOPP_CUSTOM="ON"
-$env:BOOST_THEADING = "multi"
+$env:BOOST_THEADING = ""
+#$env:BOOST_THEADING = "multi"
 $env:BOOST_RUNTIME_LINK = "static"    # (static|shared)
 $env:BOOST_LINK = "static"
 $env:ADDRESS_MODEL = "address-mode=32"
 
+$boostRoot = "$env:BOOST_ROOT"
 $boostBuildDir = "$env:BOOST_BUILD_ROOT\build"
 $boostPrefixDir = "$env:BOOST_TARGET_ROOT"
-$boostIncludeDir = "$env:BOOST_TARGET_ROOT\include\$boostBaseNameShort\boost"
+$boostIncludeDir = "$env:BOOST_TARGET_ROOT\include\$boostBaseNameShort"
 $boostLibDir = "$env:BOOST_TARGET_ROOT\libs"
-#$boostLibDir = "$env:BOOST_TARGET_ROOT\stage\lib"
+$boostLibDir2 = "$env:BOOST_TARGET_ROOT\stage\lib"
 $boostBinPath = "$env:BOOST_ROOT\bin"
 $boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
 
@@ -216,6 +217,8 @@ function exec
         [string] $StderrPrefix = "",
         [int[]] $AllowedExitCodes = @(0)
     )
+    Write-Host "* Calling $ScriptBlock"
+
     $backupErrorActionPreference = $script:ErrorActionPreference
 
     $script:ErrorActionPreference = "Continue"
@@ -286,6 +289,7 @@ function Add-EnvPath {
 Write-Host "* Preparing RaiBlocks build tools..."
 
 if ($env:PATH_BACKUP -ne $null) {
+    Write-Host "* Restoring previous path backup."
     $env:PATH = $env:PATH_BACKUP
 }
 $env:PATH_BACKUP = $env:PATH
@@ -412,20 +416,25 @@ if (!(Test-Path "project-config.jam")) {
 }
 
 If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
-    #Write-Host "* Fixing $boostProjectConfig"
-    #$clPath = Resolve-Anypath -file  "cl.exe" -find $bitness
-    #Write-Host "* Patching project-config.jam with $clPath"
-    #$clPathReplace = $clPath.Replace("\", "\\")
-    #Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";"
-    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion ;"
+    Write-Host "* Fixing $boostProjectConfig"
+    $clPath = Resolve-Anypath -file  "cl.exe" -find $bitness
+    Write-Host "* Patching project-config.jam with $clPath"
+    $clPathReplace = $clPath.Replace("\", "\\")
+    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";"
+    #Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
+    Write-Host "*   b2 part 1"
     & ./b2 install --prefix="$($boostPrefixDir)"
-    & ./b2 --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned `
-        $($env:BOOST_BUILD_CONFIG)  `
-        link="$($env:BOOST_LINK)" runtime-link="$($env:BOOST_RUNTIME_LINK)" threading="$($env:BOOST_THEADING)" toolset="$($env:msvcver)" "$($env:ADDRESS_MODEL)" `
-        --build-type=complete msvc release stage
-         #variant=debug,release 
+    Write-Host "*   b2 part 2"
+    exec { & ./b2 --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned --build-type=complete msvc `
+        architecture=x86 `
+        toolset="$($env:msvcver)" `
+        variant=debug `
+        link="$($env:BOOST_LINK)" `
+        $(if ($env:BOOST_RUNTIME_LINK -ne $null){"runtime-link=$($env:BOOST_RUNTIME_LINK)"}Else{""}) `
+        $(if ($env:BOOST_THEADING -ne $null){"threading=$($env:BOOST_THEADING)"}Else{""}) `
+        "$($env:ADDRESS_MODEL)" }
 }
 
 ## Make Qt source when available
@@ -446,14 +455,16 @@ If (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "Boost $boostVersion
 }
 
 exec { & git submodule update --init --recursive }
+if (Test-Path buildCMakeCache.txt) {
+    del CMakeCache.txt | out-null
+}
 if (Test-Path build) {
     rm -Force -Recurse build
 }
 mkdir build | out-null
 cd build
 
-cmake -DBOOST_ROOT="$($env:BOOST_ROOT)" -D Boost_INCLUDE_DIR="$($boostIncludeDir)" -DBoost_LIBRARY_DIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
-#cmake -G "$($env:VS_ARCH)" -DBOOST_ROOT="$($env:BOOST_ROOT)" -D Boost_INCLUDE_DIR="$($boostIncludeDir)" -DBoost_LIBRARY_DIR="$($boostLibDir)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
+cmake -G "$($env:VS_ARCH)" -DBOOST_ROOT="$($env:BOOST_ROOT)" -DBOOST_INCLUDEDIR="$($boostIncludeDir)" -DBOOST_LIBRARYDIR="$($boostLibDir2)" -DQt5_DIR="$($env:Qt5_DIR)" -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DENABLE_AVX2=ON -DCRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
 #make rai_node
 
 #$env:PATH = $env:PATH_BACKUP
