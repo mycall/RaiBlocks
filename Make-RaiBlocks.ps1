@@ -17,6 +17,7 @@ $qtRelease = "5.10"
 $vsVersion = "2017"
 $boostVersion = "1.66.0"
 $bitness = "64"
+$processors = "3"
 
 $boostBaseName = "boost_" + $boostVersion.Replace(".","_")
 $boostBaseNameShort = "boost-" + $boostVersion.Replace(".0","").Replace(".","_")
@@ -72,11 +73,11 @@ $env:Qt5_DIR=$buildQtPath
 $env:RAIBLOCKS_GUI="ON"
 $env:ENABLE_AVX2="ON"
 $env:CRYPTOPP_CUSTOM="ON"
-$env:BOOST_THEADING = ""
-#$env:BOOST_THEADING = "multi"
-$env:BOOST_RUNTIME_LINK = "static"    # (static|shared)
+$env:BOOST_ARCH = "x86"
+$env:BOOST_THEADING = "multi"
+$env:BOOST_RUNTIME_LINK = "static,shared"    # (static|shared)
 $env:BOOST_LINK = "static"
-$env:ADDRESS_MODEL = "address-mode=32"
+$env:ADDRESS_MODEL = "--address-mode=32"
 
 $boostRoot = "$env:BOOST_ROOT"
 $boostBuildDir = "$env:BOOST_BUILD_ROOT\build"
@@ -86,6 +87,7 @@ $boostLibDir = "$env:BOOST_TARGET_ROOT\libs"
 $boostLibDir2 = "$env:BOOST_TARGET_ROOT\stage\lib"
 $boostBinPath = "$env:BOOST_ROOT\bin"
 $boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
+$boostProc = "j$($processors)"
 
 ##############################################################################
 
@@ -114,7 +116,7 @@ function Set-VsCmd
         Push-Location
         $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio\2017"
         Set-Location $targetDir
-        $vcvars = Get-ChildItem -Recurse VsDevCmd.bat | Resolve-Path -Relative
+        $vcvars = Get-ChildItem -Recurse vcvars32.bat | Resolve-Path -Relative 
         $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
         $env:VS_ARCH = "Visual Studio 15 2017"
         Pop-Location
@@ -157,16 +159,16 @@ function Set-VsCmd
     }
     if ($bitness -eq "64") { 
         Write-Host "*   Setting 64-bit mode"
-        $vcvars += " -arch=amd64 -host_arch=amd64"
+        $vcvars = $($vcvars -replace "32", "64") + " amd64"
         $env:VS_ARCH += " Win64"
-        $env:ADDRESS_MODEL = "address-model=64"
+        $env:ADDRESS_MODEL = "--address-model=64"
     }
     Write-host "* Running $targetDir $vcvars"
     Push-Location $targetDir
-    cmd /c $vcvars + "&set" |
+    $vcvars += "&set"
+    cmd /c $vcvars |
     ForEach-Object {
       if ($_ -match "(.*?)=(.*)") {
-        #Write-Host "* SET Env: $($matches[1])`" = `"$($matches[2])`""
         Set-Item -force -path "ENV:\$($matches[1])" -value "$($matches[2])"
       }
     }
@@ -422,19 +424,18 @@ If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     $clPath = Resolve-Anypath -file  "cl.exe" -find $bitness
     Write-Host "* Patching project-config.jam with $clPath"
     $clPathReplace = $clPath.Replace("\", "\\")
-    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";"
-    #Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion ;"
+    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";`nusing mpi ;`noption.set keep-going : false ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
-    exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned `
-        architecture=x86 `
+    exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned $boostProc `
+        architecture=$($env:BOOST_ARCH) `
         toolset="$($env:msvcver)" `
         variant=debug `
         link="$($env:BOOST_LINK)" `
         $(if ($env:BOOST_RUNTIME_LINK -ne $null){"runtime-link=$($env:BOOST_RUNTIME_LINK)"}Else{""}) `
         $(if ($env:BOOST_THEADING -ne $null){"threading=$($env:BOOST_THEADING)"}Else{""}) `
         $($env:ADDRESS_MODEL) `
-        --build-type=complete msvc install }
+        --build-type=complete stage install }
 }
 
 ## Make Qt source when available
