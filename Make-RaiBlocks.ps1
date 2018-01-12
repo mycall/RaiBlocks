@@ -39,6 +39,7 @@ $downloads = $(
     @{name="Boost";
         url="https://dl.bintray.com/boostorg/release/$boostVersion/source/$boostBaseName.zip";
         filename="$boostBaseName.zip";
+        collapseDir=$false;
         extractPath="$buildPath\boost"},
     @{name="Qt";
         url="http://download.qt.io/official_releases/qt/$qtRelease/$qtReleaseFull/qt-opensource-windows-x86-$qtReleaseFull.exe";
@@ -64,7 +65,7 @@ $downloads = $(
 $buildQtPath = "$buildPath\qt"
 $buildQtSrcPath = "$buildPath\qt-src"
 
-$env:BOOST_ROOT="$buildPath\boost"
+$env:BOOST_ROOT="$buildPath\boost\$boostBaseName"
 $env:BOOST_BUILD_ROOT=$env:BOOST_ROOT
 $env:BOOST_TARGET_ROOT=$env:BOOST_ROOT
 $env:Qt5_DIR=$buildQtPath
@@ -322,6 +323,7 @@ foreach ($file in $downloads){
     $linkedInstallPath = "$($file.linkedInstallPath)"
     $installComment = "$($file.installComment)"
     $addPath = "$($file.addPath)"
+    $collapseDir = $(if ($file.collapseDir) {$true} else {$false})
     $wget = "$env:TEMP\wget.exe"
     Write-Host "* Checking $name"
     if ($file.deleteBeforeDownload -eq $true -and (Test-Path $filePath)) {
@@ -359,10 +361,10 @@ foreach ($file in $downloads){
         Push-Location
         Unzip $filePath $extractPath
         cd $extractPath
-        if ((Get-ChildItem | ?{ $_.PSIsContainer }).Length -eq 1) {
+        if (($collapseDir) -and ((Get-ChildItem | ?{ $_.PSIsContainer }).Length -eq 1)) {
             cd *
+            move -force * ..
         }
-        move -force * ..
         Pop-Location
     }
     if (($linkedInstallName -ne "") -and (Test-Path "$installPath\$linkedInstallPath") -and (!(Test-Path "$buildPath\$linkedInstallName"))) {
