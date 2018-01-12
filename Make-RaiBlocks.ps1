@@ -427,7 +427,7 @@ If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";`nusing mpi ;`noption.set keep-going : false ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
-    exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned $boostProc `
+    exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned `
         architecture=$($env:BOOST_ARCH) `
         toolset="$($env:msvcver)" `
         variant=debug `
