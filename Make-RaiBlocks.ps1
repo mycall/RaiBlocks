@@ -17,7 +17,6 @@ $qtRelease = "5.10"
 $vsVersion = "2017"
 $boostVersion = "1.66.0"
 $bitness = "64"
-$processors = "3"
 
 $boostBaseName = "boost_" + $boostVersion.Replace(".","_")
 $boostBaseNameShort = "boost-" + $boostVersion.Replace(".0","").Replace(".","_")
@@ -430,7 +429,7 @@ if (!(Test-Path "$boostBuildDir\boost")) {
     exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir="$($boostBuildDir)" --includedir="$($boostIncludeDir)" --libdir="$($boostLibDir)" --layout=versioned `
         architecture=$($env:BOOST_ARCH) `
         toolset="$($env:msvcver)" `
-        variant=debug `
+        variant=debug,release `
         link="$($env:BOOST_LINK)" `
         $(if ($env:BOOST_RUNTIME_LINK -ne $null){"runtime-link=$($env:BOOST_RUNTIME_LINK)"}Else{""}) `
         $(if ($env:BOOST_THEADING -ne $null){"threading=$($env:BOOST_THEADING)"}Else{""}) `
@@ -452,7 +451,7 @@ cd $buildPath
 
 If (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "Boost $boostVersion")) {
     Write-Host "* Fixing CMakeLists.txt with Boost $boostVersion"
-    Invoke-SearchReplace "CMakeLists.txt" "find_package \(Boost 1\.\d+\.0" "find_package (Boost $boostVersion"
+    Invoke-SearchReplace "CMakeLists.txt" "find_package \(Boost \d+\.\d+\.\d+" "find_package (Boost $boostVersion"
 }
 
 exec { & git submodule update --init --recursive }
