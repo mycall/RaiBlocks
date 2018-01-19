@@ -1,4 +1,16 @@
-﻿If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
+﻿param(
+    [string]$rootPath = "$env:USERPROFILE\Projects\RaiBlocks",
+    [string]$vsVersion = "2017",
+    [string]$boostVersion = "1.66.0",
+    [string]$githubRepo = "https://github.com/clemahieu/raiblocks.git",
+    [string]$qtRelease = "5.10",
+    [string]$bitness = "64",
+    [string]$qtPath = "C:\Qt",
+    [string]$programFiles = $env:ProgramFiles,
+    [string]$python2path = $env:PYTHONPATH 
+)
+
+If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
     Write-Error "** RUN SCRIPT AS ADMINISTRATOR **"
     Return
 }
@@ -8,16 +20,6 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
     Return
 }
 
-clear
-
-$rootPath = "$env:USERPROFILE\Projects\RaiBlocks"  # change this to your preferred development path -- TODO: ;should be param to script
-$githubRepo = "https://github.com/clemahieu/raiblocks.git"
-$python2path = 'C:\Python27'
-$qtRelease = "5.10"
-$vsVersion = "2017"
-$boostVersion = "1.66.0"
-$bitness = "64"
-
 $boostBaseName = "boost_" + $boostVersion.Replace(".","_")
 $boostBaseNameShort = "boost-" + $boostVersion.Replace(".0","").Replace(".","_")
 $qtReleaseFull = "$qtRelease.0"
@@ -25,17 +27,21 @@ $downloadPath = "$rootpath\downloads"
 $repoPath = "$rootPath\github"
 $buildPath = "$rootPath\github-build"
 
+if (($programFiles -eq $env:ProgramFiles) -and ($(Get-Item  -ErrorAction SilentlyContinue "Env:ProgramFiles(x86)") -ne $null)) {
+    $programFiles = $(Get-Item "Env:ProgramFiles(x86)").Value
+}
+
 $downloads = $(
     @{name="wget";
-        url="https://eternallybored.org/misc/wget/releases/wget-1.19.2-win64.zip";
+        url="https://eternallybored.org/misc/wget/releases/wget-1.19.2-win64.zip"; 
         filename="wget-1.19.2-win64.zip";
         extractPath="$($env:TEMP)\wget"},
     @{name="NSIS";
         url="https://downloads.sourceforge.net/project/nsis/NSIS%203/3.02.1/nsis-3.02.1-setup.exe";
         filename="nsis-3.02.1-setup.exe";
         extractPath="$buildPath\nsis";
-        installPath="$((Get-Item "Env:ProgramFiles(x86)").Value)\NSIS\";
-        addPath="$((Get-Item "Env:ProgramFiles(x86)").Value)\NSIS\bin"},
+        installPath="$programFiles\NSIS\";
+        addPath="$programFiles\NSIS\bin"},
     @{name="Boost";
         url="https://dl.bintray.com/boostorg/release/$boostVersion/source/$boostBaseName.zip";
         filename="$boostBaseName.zip";
@@ -44,8 +50,8 @@ $downloads = $(
     @{name="Qt";
         url="http://download.qt.io/official_releases/qt/$qtRelease/$qtReleaseFull/qt-opensource-windows-x86-$qtReleaseFull.exe";
         filename="qt-opensource-windows-x86-$qtReleaseFull.exe";
-        installPath="C:\Qt\Qt$qtReleaseFull";
-        addPath="C:\qt\Qt$qtReleaseFull\$qtReleaseFull\msvc$vsVersion`_64\bin;C:\Qt\Qt$qtReleaseFull\Tools\QtCreator\bin";
+        installPath="$qtPath\Qt$qtReleaseFull";
+        addPath="$qtPath\Qt$qtReleaseFull\$qtReleaseFull\msvc$vsVersion`_64\bin;$qtPath\Qt$qtReleaseFull\Tools\QtCreator\bin";
         installComment="Please check msvc$vsVersion 64-bit prebuilt components";
         linkedInstallName="qt";
         linkedInstallPath="$qtReleaseFull\msvc$vsVersion`_64";
@@ -67,7 +73,7 @@ $buildQtSrcPath = "$buildPath\qt-src"
 
 $env:BOOST_ROOT="$buildPath\boost"
 $env:BOOST_BUILD_ROOT=$env:BOOST_ROOT
-$env:BOOST_TARGET_ROOT="C:\$boostBaseName"
+$env:BOOST_TARGET_ROOT=$env:BOOST_ROOT
 $env:Qt5_DIR=$buildQtPath
 $env:RAIBLOCKS_GUI="ON"
 $env:ENABLE_AVX2="ON"
@@ -88,6 +94,14 @@ $boostLibDir = "$env:BOOST_TARGET_ROOT\stage\lib"
 $boostBinPath = "$env:BOOST_ROOT\bin"
 $boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
 $boostProc = "j$($processors)"
+
+if ($python2path -eq $null) { 
+    $python2path = $env:PYTHONHOME
+}
+if ($python2path -eq $null) { 
+    $python2path = 'C:\Python27'
+}
+
 
 ##############################################################################
 
@@ -114,7 +128,7 @@ function Set-VsCmd
         $env:vsVersion = "14.1"
         $env:msvcver="msvc-14.1"
         Push-Location
-        $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio\2017"
+        $targetDir = "$programFiles\Microsoft Visual Studio\2017"
         Set-Location $targetDir
         $vcvars = Get-ChildItem -Recurse vcvars32.bat | Resolve-Path -Relative 
         $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
@@ -124,7 +138,7 @@ function Set-VsCmd
     }
     elseif ($version -eq 2015)
     {
-        $path = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])"
+        $path = "$programFiles\Microsoft Visual Studio $($VS_VERSION[$version])"
         $env:vsVersion = $VS_VERSION[$version]
         $env:msvcver="msvc-14.0"
         Push-Location
@@ -148,7 +162,7 @@ function Set-VsCmd
 
         $env:vsVersion = $VS_VERSION[$version]
         Push-Location
-        $targetDir = "C:\Program Files (x86)\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
+        $targetDir = "$programFiles\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
         Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
         $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
@@ -254,14 +268,14 @@ function exec
 
 function Pack-EnvPath {
     return
-    $latestTs = dir "C:\Program Files (x86)\Microsoft SDKs\TypeScript\" | Sort | Select -last 1 $($_.Name)
+    $latestTs = dir "$programFiles\Microsoft SDKs\TypeScript\" | Sort | Select -last 1 $($_.Name)
     $fso = New-Object -ComObject "Scripting.FileSystemObject"
     $shortpaths = @();
     $originalPaths = [environment]::GetEnvironmentVariable("path", "Machine").Split(";")
     foreach ($path in $originalPaths) {
         $fpath = [System.IO.Path]::GetFullPath("$path");
-        if ($fpath.StartsWith('C:\Program Files (x86)\Microsoft SDKs\TypeScript\')) {
-            $fpath = "C:\Program Files (x86)\Microsoft SDKs\TypeScript\$latestTs\";
+        if ($fpath.StartsWith("$programFiles\Microsoft SDKs\TypeScript\")) {
+            $fpath = "$programFiles\Microsoft SDKs\TypeScript\$latestTs\";
         }
         $fspath = $fso.GetFolder("$fpath").ShortPath;
         $foundIdx = $shortpaths.IndexOf($fspath);
@@ -310,8 +324,6 @@ if (!(Test-Path $repoPath)){
 }
 
 if (!(Test-Path $buildPath)){
-    #Write-Host "* Creating working repo into $buildPath"
-    #mkdir $buildPath | out-null
     Write-Host "* Creating working repo from $repoPath into $buildPath"
     copy -Recurse $repoPath $buildPath | out-null
 }
@@ -329,6 +341,12 @@ foreach ($file in $downloads){
     $addPath = "$($file.addPath)"
     $collapseDir = $(if ($file.collapseDir) {$true} else {$false})
     $wget = "$env:TEMP\wget.exe"
+
+    if (!(Test-Path $downloadPath)) {
+        Write-Host "* Creating $downloadPath"
+        mkdir $downloadPath
+    }
+
     Write-Host "* Checking $name"
     if ($file.deleteBeforeDownload -eq $true -and (Test-Path $filePath)) {
         Write-Host "*   Deleting old download $filePath"
@@ -436,7 +454,7 @@ If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";`nusing mpi ;`noption.set keep-going : false ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
-    exec { & ./b2 --prefix="$($boostPrefixDir)"
+    exec { & ./b2 --prefix="$($boostPrefixDir)" `
         architecture="$($env:BOOST_ARCH)" `
         toolset="$($env:msvcver)" `
         variant=debug,release `
@@ -475,7 +493,7 @@ if (Test-Path build) {
 mkdir build | out-null
 cd build
 #Add-Content 'make.bat' 'echo %*`n%*`n'
-cmake -G "$($env:VS_ARCH)" -D BOOST_ROOT="$($env:BOOST_ROOT)" -D Qt5_DIR="$($env:Qt5_DIR)" -D Boost_DEBUG=ON -D Boost_USE_STATIC_LIBS=ON -D RAIBLOCKS_GUI=ON -D ENABLE_AVX2=ON -D CRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
+cmake -G "$($env:VS_ARCH)" -D BOOST_ROOT="$($env:BOOST_ROOT)" -D Qt5_DIR="$($env:Qt5_DIR)" -D Boost_DEBUG=ON -D Boost_USE_STATIC_LIBS=ON -D RAIBLOCKS_GUI=ON -D CRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
 #make rai_node
 
 #$env:PATH = $env:PATH_BACKUP
