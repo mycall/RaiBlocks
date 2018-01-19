@@ -1,34 +1,41 @@
 ﻿param(
-    [string]$rootPath = "$env:USERPROFILE\Projects\RaiBlocks",
-    [string]$vsVersion = "2017",
-    [string]$boostVersion = "1.66.0",
-    [string]$githubRepo = "https://github.com/clemahieu/raiblocks.git",
-    [string]$qtRelease = "5.10",
-    [string]$bitness = "64",
-    [string]$qtPath = "C:\Qt",
-    [string]$programFiles = $env:ProgramFiles,
-    [string]$python2path = $env:PYTHONPATH 
+    [string]$RootPath = "$env:USERPROFILE\Projects\RaiBlocks",
+    [string]$GithubRepo = "https://github.com/clemahieu/raiblocks.git",
+    [string]$VsVersion = "2017",
+    [string]$Bitness = "64",
+    [string]$BoostVersion = "1.66.0",
+    [string]$QtRelease = "5.10",
+    [string]$QtPath = "C:\Qt",
+    [string]$CMakePath = $null,
+    [string]$ProgramFiles = $env:ProgramFiles,
+    [string]$Python2Path = $env:PYTHONPATH
 )
 
 If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
-    Write-Error "** RUN SCRIPT AS ADMINISTRATOR **"
+    Write-Error "** RUN SCRIPT AS ADMINISTRATOR IF INSTALLING DEVTOOLS **"
     Return
 }
 
 if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
-    Write-Error "** Visual Studio 2012 or newer is required. You need to customize script if not using 2017. **"
+    Write-Error "** Visual Studio 2012 or newer is required. **"
     Return
 }
 
-$boostBaseName = "boost_" + $boostVersion.Replace(".","_")
-$boostBaseNameShort = "boost-" + $boostVersion.Replace(".0","").Replace(".","_")
-$qtReleaseFull = "$qtRelease.0"
-$downloadPath = "$rootpath\downloads"
-$repoPath = "$rootPath\github"
-$buildPath = "$rootPath\github-build"
+$boostBaseName = "boost_" + $BoostVersion.Replace(".","_")
+$boostBaseNameShort = "boost-" + $BoostVersion.Replace(".0","").Replace(".","_")
+$QtReleaseFull = "$QtRelease.0"
+$downloadPath = "$RootPath\downloads"
+$repoPath = "$RootPath\github"
+$buildPath = "$RootPath\github-build"
 
-if (($programFiles -eq $env:ProgramFiles) -and ($(Get-Item  -ErrorAction SilentlyContinue "Env:ProgramFiles(x86)") -ne $null)) {
-    $programFiles = $(Get-Item "Env:ProgramFiles(x86)").Value
+if (($ProgramFiles -eq $env:ProgramFiles) -and ($(Get-Item  -ErrorAction SilentlyContinue "Env:ProgramFiles(x86)") -ne $null)) {
+    $ProgramFiles = $(Get-Item "Env:ProgramFiles(x86)").Value
+}
+if ($Python2Path -eq "") { 
+    $Python2Path = $env:PYTHONHOME
+}
+if ($Python2Path -eq "") { 
+    $Python2Path = 'C:\Python27'
 }
 
 $downloads = $(
@@ -36,36 +43,36 @@ $downloads = $(
         url="https://eternallybored.org/misc/wget/releases/wget-1.19.2-win64.zip"; 
         filename="wget-1.19.2-win64.zip";
         extractPath="$($env:TEMP)\wget"},
-    @{name="NSIS";
-        url="https://downloads.sourceforge.net/project/nsis/NSIS%203/3.02.1/nsis-3.02.1-setup.exe";
-        filename="nsis-3.02.1-setup.exe";
-        extractPath="$buildPath\nsis";
-        installPath="$programFiles\NSIS\";
-        addPath="$programFiles\NSIS\bin"},
-    @{name="Boost";
-        url="https://dl.bintray.com/boostorg/release/$boostVersion/source/$boostBaseName.zip";
-        filename="$boostBaseName.zip";
-        collapseDir=$true;
-        extractPath="$buildPath\boost"},
-    @{name="Qt";
-        url="http://download.qt.io/official_releases/qt/$qtRelease/$qtReleaseFull/qt-opensource-windows-x86-$qtReleaseFull.exe";
-        filename="qt-opensource-windows-x86-$qtReleaseFull.exe";
-        installPath="$qtPath\Qt$qtReleaseFull";
-        addPath="$qtPath\Qt$qtReleaseFull\$qtReleaseFull\msvc$vsVersion`_64\bin;$qtPath\Qt$qtReleaseFull\Tools\QtCreator\bin";
-        installComment="Please check msvc$vsVersion 64-bit prebuilt components";
-        linkedInstallName="qt";
-        linkedInstallPath="$qtReleaseFull\msvc$vsVersion`_64";
-    },
-    #@{name="Qt-src";
-    #    url="http://download.qt.io/official_releases/qt/$qtRelease/$qtReleaseFull/single/qt-everywhere-src-$qtReleaseFull.zip";
-    #    filename="qt-everywhere-src-$qtReleaseFull.zip";
-    #    extractPath="$buildPath\qt-src"},
     @{name="Python2";
         url="https://www.python.org/ftp/python/2.7.14/python-2.7.14.amd64.msi";
         filename="python-2.7.14.amd64.msi";
         extractPath="$($env:TEMP)\python2";
-        installPath="$python2path";
-        addPath="$python2path"}
+        installPath="$Python2Path";
+        addPath="$Python2Path"},
+    @{name="NSIS";
+        url="https://downloads.sourceforge.net/project/nsis/NSIS%203/3.02.1/nsis-3.02.1-setup.exe";
+        filename="nsis-3.02.1-setup.exe";
+        extractPath="$buildPath\nsis";
+        installPath="$ProgramFiles\NSIS\";
+        addPath="$ProgramFiles\NSIS\bin"},
+    @{name="Qt";
+        url="http://download.qt.io/official_releases/qt/$QtRelease/$QtReleaseFull/qt-opensource-windows-x86-$QtReleaseFull.exe";
+        filename="qt-opensource-windows-x86-$QtReleaseFull.exe";
+        installPath="$QtPath\Qt$QtReleaseFull";
+        addPath="$QtPath\Qt$QtReleaseFull\$QtReleaseFull\msvc$VsVersion`_$Bitness\bin;$QtPath\Qt$QtReleaseFull\Tools\QtCreator\bin";
+        installComment="Please check msvc$VsVersion $Bitness-bit Prebuilt Components";
+        linkedInstallName="qt";
+        linkedInstallPath="$QtReleaseFull\msvc$VsVersion`_$Bitness";
+    },
+    #@{name="Qt-src";
+    #    url="http://download.qt.io/official_releases/qt/$QtRelease/$QtReleaseFull/single/qt-everywhere-src-$QtReleaseFull.zip";
+    #    filename="qt-everywhere-src-$QtReleaseFull.zip";
+    #    extractPath="$buildPath\qt-src"},
+    @{name="Boost";
+        url="https://dl.bintray.com/boostorg/release/$BoostVersion/source/$boostBaseName.zip";
+        filename="$boostBaseName.zip";
+        collapseDir=$true;
+        extractPath="$buildPath\boost"}
 )
 
 $buildQtPath = "$buildPath\qt"
@@ -95,13 +102,6 @@ $boostBinPath = "$env:BOOST_ROOT\bin"
 $boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
 $boostProc = "j$($processors)"
 
-if ($python2path -eq $null) { 
-    $python2path = $env:PYTHONHOME
-}
-if ($python2path -eq $null) { 
-    $python2path = 'C:\Python27'
-}
-
 
 ##############################################################################
 
@@ -125,27 +125,33 @@ function Set-VsCmd
     $VS_VERSION = @{ 2012 = "11.0"; 2013 = "12.0"; 2015 = "14.0"; 2017 = "14.1" }
     if ($version -eq 2017)
     {
-        $env:vsVersion = "14.1"
+        $env:VsVersion = "14.1"
         $env:msvcver="msvc-14.1"
         Push-Location
-        $targetDir = "$programFiles\Microsoft Visual Studio\2017"
+        $targetDir = "$ProgramFiles\Microsoft Visual Studio\2017"
         Set-Location $targetDir
         $vcvars = Get-ChildItem -Recurse vcvars32.bat | Resolve-Path -Relative 
-        $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
+        $env:CMAKE_BIN = "$CMakePath\bin"
+        if ($CMakePath -eq $null) {
+            $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
+        }
         $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
         $env:VS_ARCH = "Visual Studio 15 2017"
         Pop-Location
     }
     elseif ($version -eq 2015)
     {
-        $path = "$programFiles\Microsoft Visual Studio $($VS_VERSION[$version])"
-        $env:vsVersion = $VS_VERSION[$version]
+        $path = "$ProgramFiles\Microsoft Visual Studio $($VS_VERSION[$version])"
+        $env:VsVersion = $VS_VERSION[$version]
         $env:msvcver="msvc-14.0"
         Push-Location
         $targetDir = "$path\Common7\Tools"
         Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
-        $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
+        $env:CMAKE_BIN = "$CMakePath\bin"
+        if ($CMakePath -eq $null) {
+            $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
+        }
         $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
         $env:VS_ARCH = "Visual Studio 14 2015"
         Pop-Location
@@ -160,9 +166,9 @@ function Set-VsCmd
             $env:VS_ARCH = "Visual Studio 11 2012"
         }
 
-        $env:vsVersion = $VS_VERSION[$version]
+        $env:VsVersion = $VS_VERSION[$version]
         Push-Location
-        $targetDir = "$programFiles\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
+        $targetDir = "$ProgramFiles\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
         Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
         $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
@@ -173,7 +179,7 @@ function Set-VsCmd
         "* Error: Visual Studio $version not installed"
         return
     }
-    if ($bitness -eq "64") { 
+    if ($Bitness -eq "64") { 
         Write-Host "*   Setting 64-bit mode"
         $vcvars = $($vcvars -replace "32", "64") + " amd64"
         $env:VS_ARCH += " Win64"
@@ -268,14 +274,14 @@ function exec
 
 function Pack-EnvPath {
     return
-    $latestTs = dir "$programFiles\Microsoft SDKs\TypeScript\" | Sort | Select -last 1 $($_.Name)
+    $latestTs = dir "$ProgramFiles\Microsoft SDKs\TypeScript\" | Sort | Select -last 1 $($_.Name)
     $fso = New-Object -ComObject "Scripting.FileSystemObject"
     $shortpaths = @();
     $originalPaths = [environment]::GetEnvironmentVariable("path", "Machine").Split(";")
     foreach ($path in $originalPaths) {
         $fpath = [System.IO.Path]::GetFullPath("$path");
-        if ($fpath.StartsWith("$programFiles\Microsoft SDKs\TypeScript\")) {
-            $fpath = "$programFiles\Microsoft SDKs\TypeScript\$latestTs\";
+        if ($fpath.StartsWith("$ProgramFiles\Microsoft SDKs\TypeScript\")) {
+            $fpath = "$ProgramFiles\Microsoft SDKs\TypeScript\$latestTs\";
         }
         $fspath = $fso.GetFolder("$fpath").ShortPath;
         $foundIdx = $shortpaths.IndexOf($fspath);
@@ -314,13 +320,13 @@ if ($env:PATH_BACKUP -ne $null) {
 $env:PATH_BACKUP = $env:PATH
 
 
-if (!(Test-Path $rootPath)){
-    mkdir $rootPath | out-null
+if (!(Test-Path $RootPath)){
+    mkdir $RootPath | out-null
 }
 
 if (!(Test-Path $repoPath)){
-    Write-Host "* Cloning $githubRepo into $repoPath"
-    & git clone -q $githubRepo $repoPath
+    Write-Host "* Cloning $GithubRepo into $repoPath"
+    & git clone -q $GithubRepo $repoPath
 }
 
 if (!(Test-Path $buildPath)){
@@ -375,7 +381,7 @@ foreach ($file in $downloads){
             if ($installComment -ne "") {
                 Write-Host "*** $installComment ***"
             }
-            & $filePath | out-string
+            Start-Process "$filePath" -Wait
         }
     }
     if (($filePath -match ".zip") -and (!(Test-Path $extractPath))) {
@@ -404,19 +410,16 @@ foreach ($file in $downloads){
 
 ##############################################################################
 
-#Write-Host "** Please verify build tools are installed before continuing **"
-#pause
-
 Write-Host "* Building RaiBlocks..."
 
 # add python to path
 if ($env:PYTHONPATH -eq $null) {
-    Write-Host "*   Set PYTHONPATH=$python2path"
-    $env:PYTHONPATH = $python2path
+    Write-Host "*   Set PYTHONPATH=$Python2Path"
+    $env:PYTHONPATH = $Python2Path
 }
 
 ## setup Visual Studio path
-Set-VsCmd -version $vsVersion
+Set-VsCmd -version $VsVersion
 
 # add cmake to path
 if (!($env:PATH.Contains($env:CMAKE_BIN))) {
@@ -448,10 +451,10 @@ if (!(Test-Path "project-config.jam")) {
 
 If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     Write-Host "* Fixing $boostProjectConfig"
-    $clPath = Resolve-Anypath -file  "cl.exe" -find $bitness
+    $clPath = Resolve-Anypath -file  "cl.exe" -find $Bitness
     Write-Host "* Patching project-config.jam with $clPath"
     $clPathReplace = $clPath.Replace("\", "\\")
-    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:vsVersion : `"$clPath`";`nusing mpi ;`noption.set keep-going : false ;"
+    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:VsVersion : `"$clPath`";`nusing mpi ;`noption.set keep-going : false ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
     exec { & ./b2 --prefix="$($boostPrefixDir)" `
@@ -478,9 +481,9 @@ if (Test-Path $buildQtSrcPath) {
 cd $buildPath
 
 
-If (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "Boost $boostVersion")) {
-    Write-Host "* Fixing CMakeLists.txt with Boost $boostVersion"
-    Invoke-SearchReplace "CMakeLists.txt" "find_package \(Boost \d+\.\d+\.\d+" "find_package (Boost $boostVersion"
+If (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "Boost $BoostVersion")) {
+    Write-Host "* Fixing CMakeLists.txt with Boost $BoostVersion"
+    Invoke-SearchReplace "CMakeLists.txt" "find_package \(Boost \d+\.\d+\.\d+" "find_package (Boost $BoostVersion"
 }
 
 exec { & git submodule update --init --recursive }
