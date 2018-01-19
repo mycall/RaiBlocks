@@ -89,7 +89,7 @@ $env:BOOST_ARCH = "x86"
 $env:BOOST_THEADING = "multi"
 $env:BOOST_RUNTIME_LINK = "static,shared"    # (static|shared)
 $env:BOOST_LINK = "static"
-$env:ADDRESS_MODEL = "--address-mode=32"
+$env:ADDRESS_MODEL = "address-mode=32"
 $env:FINDBOOST_PATH = ""
 
 $boostRoot = "$env:BOOST_ROOT"
@@ -132,7 +132,7 @@ function Set-VsCmd
         Set-Location $targetDir
         $vcvars = Get-ChildItem -Recurse vcvars32.bat | Resolve-Path -Relative 
         $env:CMAKE_BIN = "$CMakePath\bin"
-        if ($CMakePath -eq $null) {
+        if ($CMakePath -eq "") {
             $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
         }
         $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
@@ -149,7 +149,7 @@ function Set-VsCmd
         Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
         $env:CMAKE_BIN = "$CMakePath\bin"
-        if ($CMakePath -eq $null) {
+        if ($CMakePath -eq "") {
             $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
         }
         $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
@@ -183,7 +183,7 @@ function Set-VsCmd
         Write-Host "*   Setting 64-bit mode"
         $vcvars = $($vcvars -replace "32", "64") + " amd64"
         $env:VS_ARCH += " Win64"
-        $env:ADDRESS_MODEL = "--address-model=64"
+        $env:ADDRESS_MODEL = "address-model=64"
     }
     Write-host "* Running $targetDir $vcvars"
     Push-Location $targetDir
