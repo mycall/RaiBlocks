@@ -118,7 +118,7 @@ function Set-VsCmd
         Set-Location $targetDir
         $vcvars = Get-ChildItem -Recurse vcvars32.bat | Resolve-Path -Relative 
         $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
-        $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path -Relative)"
+        $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
         $env:VS_ARCH = "Visual Studio 15 2017"
         Pop-Location
     }
@@ -131,8 +131,8 @@ function Set-VsCmd
         $targetDir = "$path\Common7\Tools"
         Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
-        $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
-        $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)".Replace("Microsoft.PowerShell.Core\FileSystem::", "")
+        $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
+        $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
         $env:VS_ARCH = "Visual Studio 14 2015"
         Pop-Location
     }
