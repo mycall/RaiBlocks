@@ -457,7 +457,7 @@ If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:VsVersion : `"$clPath`";`nusing mpi ;`noption.set keep-going : false ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
-    exec { & ./b2 --prefix="$($boostPrefixDir)" `
+    exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir="$($boostBuildDir)" `
         architecture="$($env:BOOST_ARCH)" `
         toolset="$($env:msvcver)" `
         variant=debug,release `
@@ -495,8 +495,8 @@ if (Test-Path build) {
 }
 mkdir build | out-null
 cd build
-#Add-Content 'make.bat' 'echo %*`n%*`n'
-cmake -G "$($env:VS_ARCH)" -D BOOST_ROOT="$($env:BOOST_ROOT)" -D Qt5_DIR="$($env:Qt5_DIR)" -D Boost_DEBUG=ON -D Boost_USE_STATIC_LIBS=ON -D RAIBLOCKS_GUI=ON -D CRYPTOPP_CUSTOM=ON ..\CMakeLists.txt
-#make rai_node
+cmake -G "$($env:VS_ARCH)" -D BOOST_ROOT="$($env:BOOST_ROOT)" -D Qt5_DIR="$($env:Qt5_DIR)" -D Boost_DEBUG=ON -D Boost_USE_STATIC_LIBS=ON -D RAIBLOCKS_GUI=ON -D CRYPTOPP_CUSTOM=ON -D BOOST_CUSTOM=ON ..\CMakeLists.txt
+cd ..
+devenv /Rebuild Debug ALL_BUILD.vcxproj
 
 #$env:PATH = $env:PATH_BACKUP
