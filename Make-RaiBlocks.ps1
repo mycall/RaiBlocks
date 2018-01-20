@@ -21,6 +21,11 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
     Return
 }
 
+clear
+
+$bitArch1 = $(if ($Bitness -eq "64"){"x64"}Else{"x86"})
+$bitArch2 = $(if ($Bitness -eq "64"){"win64"}Else{"win32"})
+$bitArch3 = $(if ($Bitness -eq "64"){"amd64"}Else{""})
 $boostBaseName = "boost_" + $BoostVersion.Replace(".","_")
 $boostBaseNameShort = "boost-" + $BoostVersion.Replace(".0","").Replace(".","_")
 $QtReleaseFull = "$QtRelease.0"
@@ -28,9 +33,9 @@ $downloadPath = "$RootPath\downloads"
 $repoPath = "$RootPath\github"
 $buildPath = "$RootPath\github-build"
 
-if (($ProgramFiles -eq $env:ProgramFiles) -and ($(Get-Item  -ErrorAction SilentlyContinue "Env:ProgramFiles(x86)") -ne $null)) {
-    $ProgramFiles = $(Get-Item "Env:ProgramFiles(x86)").Value
-}
+#if (($ProgramFiles -eq $env:ProgramFiles) -and ($(Get-Item  -ErrorAction SilentlyContinue "Env:ProgramFiles(x86)") -ne $null)) {
+#    $ProgramFiles = $(Get-Item "Env:ProgramFiles(x86)").Value
+#}
 if ($Python2Path -eq "") { 
     $Python2Path = $env:PYTHONHOME
 }
@@ -40,12 +45,12 @@ if ($Python2Path -eq "") {
 
 $downloads = $(
     @{name="wget";
-        url="https://eternallybored.org/misc/wget/releases/wget-1.19.2-win64.zip"; 
-        filename="wget-1.19.2-win64.zip";
+        url="https://eternallybored.org/misc/wget/releases/wget-1.19.2-win$Bitness.zip"; 
+        filename="wget-1.19.2-win$Bitness.zip";
         extractPath="$($env:TEMP)\wget"},
     @{name="Python2";
-        url="https://www.python.org/ftp/python/2.7.14/python-2.7.14.amd64.msi";
-        filename="python-2.7.14.amd64.msi";
+        url="https://www.python.org/ftp/python/2.7.14/python-2.7.14.$bitArch3.msi";
+        filename="python-2.7.14.$bitArch3.msi";
         extractPath="$($env:TEMP)\python2";
         installPath="$Python2Path";
         addPath="$Python2Path"},
@@ -68,6 +73,10 @@ $downloads = $(
     #    url="http://download.qt.io/official_releases/qt/$QtRelease/$QtReleaseFull/single/qt-everywhere-src-$QtReleaseFull.zip";
     #    filename="qt-everywhere-src-$QtReleaseFull.zip";
     #    extractPath="$buildPath\qt-src"},
+    @{name="CMake";
+        url="https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
+        filename="cmake-3.10.2-$bitArch2-$bitArch1.zip";
+        extractpath="$buildpath\cmake"},
     @{name="Boost";
         url="https://dl.bintray.com/boostorg/release/$BoostVersion/source/$boostBaseName.zip";
         filename="$boostBaseName.zip";
@@ -85,11 +94,11 @@ $env:Qt5_DIR=$buildQtPath
 $env:RAIBLOCKS_GUI="ON"
 $env:ENABLE_AVX2="ON"
 $env:CRYPTOPP_CUSTOM="ON"
-$env:BOOST_ARCH = "x86"
-$env:BOOST_THEADING = "multi"
+$env:BOOST_THEADING = "multi"  # (multi|single)
 $env:BOOST_RUNTIME_LINK = "static,shared"    # (static|shared)
 $env:BOOST_LINK = "static"
-$env:ADDRESS_MODEL = "address-mode=32"
+$env:BOOST_ARCH = "x86"
+$env:ADDRESS_MODEL = "--address-mode=32"
 $env:FINDBOOST_PATH = ""
 
 $boostRoot = "$env:BOOST_ROOT"
@@ -109,10 +118,14 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Unzip
 {
     param([string]$zipfile, [string]$outpath)
+    $backupErrorActionPreference = $script:ErrorActionPreference
+    $script:ErrorActionPreference = "Stop"
     if (!(Test-Path $outpath)) {
         md -Force $outpath | out-null
     }
+    [System.IO.Compression.ZipFile]::OpenRead($zipfile).Entries.Name | Out-Null # tests for corruption
     [System.IO.Compression.ZipFile]::ExtractToDirectory($zipfile, $outpath)
+    $script:ErrorActionPreference = $backupErrorActionPreference
 }
 
 function Set-VsCmd
@@ -183,7 +196,7 @@ function Set-VsCmd
         Write-Host "*   Setting 64-bit mode"
         $vcvars = $($vcvars -replace "32", "64") + " amd64"
         $env:VS_ARCH += " Win64"
-        $env:ADDRESS_MODEL = "address-model=64"
+        $env:ADDRESS_MODEL = "--address-model=64"
     }
     Write-host "* Running $targetDir $vcvars"
     Push-Location $targetDir
@@ -242,7 +255,7 @@ function exec
         [string] $StderrPrefix = "",
         [int[]] $AllowedExitCodes = @(0)
     )
-    Write-Host "* Calling $ScriptBlock"
+    Write-Host "*  Calling $ScriptBlock"
 
     $backupErrorActionPreference = $script:ErrorActionPreference
 
@@ -326,7 +339,10 @@ if (!(Test-Path $RootPath)){
 
 if (!(Test-Path $repoPath)){
     Write-Host "* Cloning $GithubRepo into $repoPath"
+    $backupErrorActionPreference = $script:ErrorActionPreference
+    $script:ErrorActionPreference = "Stop"
     & git clone -q $GithubRepo $repoPath
+    $script:ErrorActionPreference = $backupErrorActionPreference
 }
 
 if (!(Test-Path $buildPath)){
@@ -346,7 +362,7 @@ foreach ($file in $downloads){
     $installComment = "$($file.installComment)"
     $addPath = "$($file.addPath)"
     $collapseDir = $(if ($file.collapseDir) {$true} else {$false})
-    $wget = "$env:TEMP\wget.exe"
+    $wget = "$env:TEMP\wget\wget.exe"
 
     if (!(Test-Path $downloadPath)) {
         Write-Host "* Creating $downloadPath"
@@ -368,7 +384,7 @@ foreach ($file in $downloads){
         if (Test-Path $wget) {
             Push-Location
             cd $filePath\..
-            exec { & $wget --no-verbose --continue $url }
+            exec { & $wget --tries=50 --retry-connrefused --no-verbose --continue $url }
             Pop-Location
         }
         else {
@@ -421,6 +437,11 @@ if ($env:PYTHONPATH -eq $null) {
 ## setup Visual Studio path
 Set-VsCmd -version $VsVersion
 
+# check for custom cmake
+if (Test-Path "$buildpath\cmake") {
+    $env:CMAKE_BIN = "$buildpath\cmake\bin"
+}
+
 # add cmake to path
 if (!($env:PATH.Contains($env:CMAKE_BIN))) {
     Write-Host "*   Adding to PATH $env:CMAKE_BIN"
@@ -457,7 +478,7 @@ If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:VsVersion : `"$clPath`";`nusing mpi ;`noption.set keep-going : false ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
-    exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir="$($boostBuildDir)" `
+    exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir=$boostBuildDir `
         architecture="$($env:BOOST_ARCH)" `
         toolset="$($env:msvcver)" `
         variant=debug,release `
@@ -475,13 +496,13 @@ if (Test-Path $buildQtSrcPath) {
     if (!(Test-Path $buildQtPath)) {
         & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $env:Qt5_DIR
     }
-    & cmake 
+    & - 
     & cmake install
 }
+
 cd $buildPath
 
-
-If (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "Boost $BoostVersion")) {
+if (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "Boost $BoostVersion")) {
     Write-Host "* Fixing CMakeLists.txt with Boost $BoostVersion"
     Invoke-SearchReplace "CMakeLists.txt" "find_package \(Boost \d+\.\d+\.\d+" "find_package (Boost $BoostVersion"
 }
@@ -490,12 +511,18 @@ exec { & git submodule update --init --recursive }
 if (Test-Path buildCMakeCache.txt) {
     del CMakeCache.txt | out-null
 }
+if (Test-Path CMakeFiles) {
+    rm -Force -Recurse CMakeFiles
+}
+if (Test-Path CMakeCache.txt) {
+    rm -Force CMakeCache.txt
+}
 if (Test-Path build) {
     rm -Force -Recurse build
 }
 mkdir build | out-null
 cd build
-cmake -G "$($env:VS_ARCH)" -D BOOST_ROOT="$($env:BOOST_ROOT)" -D Qt5_DIR="$($env:Qt5_DIR)" -D Boost_DEBUG=ON -D Boost_USE_STATIC_LIBS=ON -D RAIBLOCKS_GUI=ON -D CRYPTOPP_CUSTOM=ON -D BOOST_CUSTOM=ON ..\CMakeLists.txt
+& cmake -G "$env:VS_ARCH" -DBOOST_ROOT=$env:BOOST_ROOT -DQt5_DIR=$env:Qt5_DIR -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DCRYPTOPP_CUSTOM=$($env:CRYPTOPP_CUSTOM) -DBOOST_CUSTOM=ON -DENABLE_AVX2=ON ..\CMakeLists.txt
 cd ..
 devenv /Rebuild Debug ALL_BUILD.vcxproj
 
