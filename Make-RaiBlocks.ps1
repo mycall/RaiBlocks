@@ -32,14 +32,12 @@ $QtReleaseFull = "$QtRelease.0"
 $downloadPath = "$RootPath\downloads"
 $repoPath = "$RootPath\github"
 $buildPath = "$RootPath\github-build"
+$programFiles32 = $(Get-Item "env:programfiles(x86)").Value
 
-#if (($ProgramFiles -eq $env:ProgramFiles) -and ($(Get-Item  -ErrorAction SilentlyContinue "Env:ProgramFiles(x86)") -ne $null)) {
-#    $ProgramFiles = $(Get-Item "Env:ProgramFiles(x86)").Value
-#}
-if ($Python2Path -eq "") { 
+if ([string]::IsNullOrEmpty($Python2Path)) { 
     $Python2Path = $env:PYTHONHOME
 }
-if ($Python2Path -eq "") { 
+if ([string]::IsNullOrEmpty($Python2Path)) { 
     $Python2Path = 'C:\Python27'
 }
 
@@ -58,8 +56,8 @@ $downloads = $(
         url="https://downloads.sourceforge.net/project/nsis/NSIS%203/3.02.1/nsis-3.02.1-setup.exe";
         filename="nsis-3.02.1-setup.exe";
         extractPath="$buildPath\nsis";
-        installPath="$ProgramFiles\NSIS\";
-        addPath="$ProgramFiles\NSIS\bin"},
+        installPath="$programFiles32\NSIS\";
+        addPath="$programFiles32\NSIS\bin"},
     @{name="Qt";
         url="http://download.qt.io/official_releases/qt/$QtRelease/$QtReleaseFull/qt-opensource-windows-x86-$QtReleaseFull.exe";
         filename="qt-opensource-windows-x86-$QtReleaseFull.exe";
@@ -145,7 +143,7 @@ function Set-VsCmd
         Set-Location $targetDir
         $vcvars = Get-ChildItem -Recurse vcvars32.bat | Resolve-Path -Relative 
         $env:CMAKE_BIN = "$CMakePath\bin"
-        if ($CMakePath -eq "") {
+        if ([string]::IsNullOrEmpty($CMakePath)) {
             $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
         }
         $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
@@ -162,7 +160,7 @@ function Set-VsCmd
         Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
         $env:CMAKE_BIN = "$CMakePath\bin"
-        if ($CMakePath -eq "") {
+        if ([string]::IsNullOrEmpty($CMakePath)) {
             $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
         }
         $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
@@ -255,7 +253,7 @@ function exec
         [string] $StderrPrefix = "",
         [int[]] $AllowedExitCodes = @(0)
     )
-    Write-Host "*  Calling $ScriptBlock"
+    Write-Host "*   Calling $ScriptBlock"
 
     $backupErrorActionPreference = $script:ErrorActionPreference
 
@@ -326,7 +324,7 @@ function Add-EnvPath {
 
 Write-Host "* Preparing RaiBlocks build tools..."
 
-if ($env:PATH_BACKUP -ne $null) {
+if (!([string]::IsNullOrEmpty($env:PATH_BACKUP))) {
     Write-Host "* Restoring previous path backup."
     $env:PATH = $env:PATH_BACKUP
 }
@@ -363,13 +361,14 @@ foreach ($file in $downloads){
     $addPath = "$($file.addPath)"
     $collapseDir = $(if ($file.collapseDir) {$true} else {$false})
     $wget = "$env:TEMP\wget\wget.exe"
+    $targetDir = $(if (!([string]::IsNullOrEmpty($installPath))) {$installPath} else {$(if ($collapseDir -eq $true) {Split-Path $extractPath -Parent} else {$extractPath})})
+    Write-Host "* Checking $name is installed in $targetDir"
 
     if (!(Test-Path $downloadPath)) {
         Write-Host "* Creating $downloadPath"
         mkdir $downloadPath
     }
 
-    Write-Host "* Checking $name"
     if ($file.deleteBeforeDownload -eq $true -and (Test-Path $filePath)) {
         Write-Host "*   Deleting old download $filePath"
         del -Force -Recurse $filePath
@@ -392,9 +391,9 @@ foreach ($file in $downloads){
         }
     }
     if (($filePath -match ".msi") -or ($filePath -match ".exe")) {
-        if ($installPath -ne "" -and !(Test-Path "$installPath")) {
+        if ((!([string]::IsNullOrEmpty($installPath))) -and !(Test-Path "$installPath")) {
             Write-Host "*   Installing $filepath."
-            if ($installComment -ne "") {
+            if (!([string]::IsNullOrEmpty($installComment))) {
                 Write-Host "*** $installComment ***"
             }
             Start-Process "$filePath" -Wait
@@ -411,14 +410,14 @@ foreach ($file in $downloads){
         }
         Pop-Location
     }
-    if (($linkedInstallName -ne "") -and (Test-Path "$installPath\$linkedInstallPath") -and (!(Test-Path "$buildPath\$linkedInstallName"))) {
+    if ((!([string]::IsNullOrEmpty($linkedInstallName))) -and (Test-Path "$installPath\$linkedInstallPath") -and (!(Test-Path "$buildPath\$linkedInstallName"))) {
         Write-Host "*   Creating symbolic link from $buildPath\$linkedInstallName to $installPath\$linkedInstallPath"
         Push-Location
         cd $buildPath
         New-Item -ItemType SymbolicLink -Name $linkedInstallName -Target $installPath\$linkedInstallPath | out-null
         Pop-Location
     }
-    if (($addPath -ne "") -and (!($env:PATH.Contains($addPath)))) {
+    if ((!([string]::IsNullOrEmpty($addPath))) -and (!($env:PATH.Contains($addPath)))) {
         Write-Host "*   Adding to PATH $addPath"
         Add-EnvPath -Item $addPath
     }
@@ -429,7 +428,7 @@ foreach ($file in $downloads){
 Write-Host "* Building RaiBlocks..."
 
 # add python to path
-if ($env:PYTHONPATH -eq $null) {
+if ([string]::IsNullOrEmpty($env:PYTHONPATH)) {
     Write-Host "*   Set PYTHONPATH=$Python2Path"
     $env:PYTHONPATH = $Python2Path
 }
@@ -455,7 +454,7 @@ if (!($env:PATH.Contains($boostBinPath))) {
 }
 
 # patch FindBoost.cmake with repo version
-If (($env:FINDBOOST_PATH -ne "") -and !(Get-Content $env:FINDBOOST_PATH | Select-String -Pattern "_boost_AAM_TAG")) {
+If ((!([string]::IsNullOrEmpty($env:FINDBOOST_PATH))) -and !(Get-Content $env:FINDBOOST_PATH | Select-String -Pattern "_boost_AAM_TAG")) {
     Set-ItemProperty -Path $env:FINDBOOST_PATH -Name IsReadOnly -Value $false
     Write-Host "*   Copying $buildPath\FindBoost.cmake to $env:FINDBOOST_PATH"
     copy "$buildPath\FindBoost.cmake" "$env:FINDBOOST_PATH"
@@ -483,8 +482,8 @@ if (!(Test-Path "$boostBuildDir\boost")) {
         toolset="$($env:msvcver)" `
         variant=debug,release `
         link="$($env:BOOST_LINK)" `
-        $(if ($env:BOOST_RUNTIME_LINK -ne $null){"runtime-link=$($env:BOOST_RUNTIME_LINK)"}Else{""}) `
-        $(if ($env:BOOST_THEADING -ne $null){"threading=$($env:BOOST_THEADING)"}Else{""}) `
+        $(if (!([string]::IsNullOrEmpty($env:BOOST_RUNTIME_LINK))){"runtime-link=$($env:BOOST_RUNTIME_LINK)"}Else{""}) `
+        $(if (!([string]::IsNullOrEmpty($env:BOOST_THEADING))){"threading=$($env:BOOST_THEADING)"}Else{""}) `
         $($env:ADDRESS_MODEL) `
         --build-type=complete msvc stage install }
         #--layout=versioned `
