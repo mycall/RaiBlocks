@@ -8,7 +8,8 @@
     [string]$QtPath = "C:\Qt",
     [string]$CMakePath = $null,
     [string]$ProgramFiles = $env:ProgramFiles,
-    [string]$Python2Path = $env:PYTHONPATH
+    [string]$Python2Path = $env:PYTHONPATH,
+    [switch]$FullBuild
 )
 
 If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
@@ -37,6 +38,7 @@ $env:BOOST_ARCH = "x86"
 $bitArch1 = $(if ($Bitness -eq "64") {"x64"} else {"x86"})
 $bitArch2 = $(if ($Bitness -eq "64") {"win64"} else {"win32"})
 $bitArch3 = $(if ($Bitness -eq "64") {"amd64"} else {""})
+$bitArch4 = $(if ($Bitness -eq "64") {"-x64"} else {""})
 $boostBaseName = "boost_" + $BoostVersion.Replace(".","_")
 $boostBaseNameShort = "boost-" + $BoostVersion.Replace(".0","").Replace(".","_")
 $QtReleaseFull = "$QtRelease.0"
@@ -57,6 +59,11 @@ $downloads = $(
         url="https://eternallybored.org/misc/wget/releases/wget-1.19.2-win$Bitness.zip"; 
         filename="wget-1.19.2-win$Bitness.zip";
         extractPath="$env:TEMP\wget"},
+    @{name="7zip";
+        url="http://www.7-zip.org/a/7z1800$bitArch4.exe"; 
+        filename="7z1800$bitArch4.exe";
+        installPath="$ProgramFiles\7-Zip";
+        addPath="$ProgramFiles\7-Zip"},
     @{name="Python2";
         url="https://www.python.org/ftp/python/2.7.14/python-2.7.14.$bitArch3.msi";
         filename="python-2.7.14.$bitArch3.msi";
@@ -66,7 +73,6 @@ $downloads = $(
     @{name="NSIS";
         url="https://downloads.sourceforge.net/project/nsis/NSIS%203/3.02.1/nsis-3.02.1-setup.exe";
         filename="nsis-3.02.1-setup.exe";
-        extractPath="$buildPath\nsis";
         installPath="$ProgramFiles32\NSIS\";
         addPath="$ProgramFiles32\NSIS\bin"},
     @{name="Qt";
@@ -116,17 +122,21 @@ $boostProc = "j$processors"
 
 ##############################################################################
 
-Add-Type -AssemblyName System.IO.Compression.FileSystem
+#Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Unzip
 {
     param([string]$zipfile, [string]$outpath)
     $backupErrorActionPreference = $script:ErrorActionPreference
     $script:ErrorActionPreference = "Stop"
-    if (!(Test-Path $outpath)) {
-        md -Force $outpath | out-null
+    if (Test-Path $outpath) {
+        rmdir -recursive -force $outpath | out-null
     }
-    [System.IO.Compression.ZipFile]::OpenRead($zipfile).Entries.Name | Out-Null # tests for corruption
-    [System.IO.Compression.ZipFile]::ExtractToDirectory($zipfile, $outpath)
+    if (!(Test-Path $outpath)) {
+        mkdir -force $outpath | out-null
+    }
+    7z x $zipfile -o"$outpath" -r | out-null
+    #[System.IO.Compression.ZipFile]::OpenRead($zipfile).Entries.Name | Out-Null # tests for corruption
+    #[System.IO.Compression.ZipFile]::ExtractToDirectory($zipfile, $outpath)
     $script:ErrorActionPreference = $backupErrorActionPreference
 }
 
@@ -307,6 +317,7 @@ function Add-EnvPath {
 
 Write-Host "* Preparing RaiBlocks build tools..."
 
+
 if (!([string]::IsNullOrEmpty($env:PATH_BACKUP))) {
     Write-Host "* Restoring previous path backup."
     $env:PATH = $env:PATH_BACKUP
@@ -324,6 +335,11 @@ if (!(Test-Path $repoPath)){
     $script:ErrorActionPreference = "Stop"
     & git clone -q $GithubRepo $repoPath
     $script:ErrorActionPreference = $backupErrorActionPreference
+}
+
+if ($FullBuild.IsPresent) {
+    Write-Host "* FULL BUILD: Deleting $buildPath"
+    rmdir -Force -Recurse $buildPath | out-null
 }
 
 if (!(Test-Path $buildPath)){
@@ -388,8 +404,9 @@ foreach ($file in $downloads){
         Unzip $filePath $extractPath
         cd $extractPath
         if (($collapseDir) -and ((Get-ChildItem | ?{ $_.PSIsContainer }).Length -eq 1)) {
-            cd *
-            move -force * ..
+            $dirName = $(Get-ChildItem | ?{ $_.PSIsContainer } | Select-Object -First 1).Name
+            move -force $dirName\* .
+            rmdir -recurse $dirName
         }
         Pop-Location
     }
@@ -501,14 +518,15 @@ if (Test-Path build) {
 }
 mkdir build | out-null
 cd build
-& cmake -G "$env:VS_ARCH" "-DQt5_DIR=$env:Qt5_DIR" `
+& cmake -G "$env:VS_ARCH" 
+    -DQt5_DIR=$($env:Qt5_DIR) `
     -DBoost_USE_STATIC_LIBS=ON ` 
-    -DBOOST_ROOT=$env:BOOST_ROOT `
-    -DBoost_DEBUG=$env:BOOST_DEBUG ` 
-    -DRAIBLOCKS_GUI=$env:RAIBLOCKS_GUI ` 
-    -DCRYPTOPP_CUSTOM=$env:CRYPTOPP_CUSTOM ` 
-    -DBOOST_CUSTOM=$env:BOOST_CUSTOM `
-    -DENABLE_AVX2=$env:ENABLE_AVX2 ` 
+    -DBOOST_ROOT=$($env:BOOST_ROOT) `
+    -DBoost_DEBUG=$($env:BOOST_DEBUG) ` 
+    -DRAIBLOCKS_GUI=$($env:RAIBLOCKS_GUI) ` 
+    -DCRYPTOPP_CUSTOM=$($env:CRYPTOPP_CUSTOM) ` 
+    -DBOOST_CUSTOM=$($env:BOOST_CUSTOM) `
+    -DENABLE_AVX2=$($env:ENABLE_AVX2) ` 
     ..\CMakeLists.txt
 cd ..
 cmake
