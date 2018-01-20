@@ -23,16 +23,27 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
 
 clear
 
-$bitArch1 = $(if ($Bitness -eq "64"){"x64"}Else{"x86"})
-$bitArch2 = $(if ($Bitness -eq "64"){"win64"}Else{"win32"})
-$bitArch3 = $(if ($Bitness -eq "64"){"amd64"}Else{""})
+$env:BOOST_DEBUG="ON"
+$env:BOOST_CUSTOM="ON"
+$env:RAIBLOCKS_GUI="ON"
+$env:ENABLE_AVX2="ON"
+$env:CRYPTOPP_CUSTOM="ON"
+$env:BOOST_THEADING = "multi"  # (multi|single)
+$env:BOOST_RUNTIME_LINK = "static,shared"    # (static|shared)
+$env:BOOST_LINK = "static"
+$env:BOOST_ARCH = "x86"
+
+
+$bitArch1 = $(if ($Bitness -eq "64") {"x64"} else {"x86"})
+$bitArch2 = $(if ($Bitness -eq "64") {"win64"} else {"win32"})
+$bitArch3 = $(if ($Bitness -eq "64") {"amd64"} else {""})
 $boostBaseName = "boost_" + $BoostVersion.Replace(".","_")
 $boostBaseNameShort = "boost-" + $BoostVersion.Replace(".0","").Replace(".","_")
 $QtReleaseFull = "$QtRelease.0"
 $downloadPath = "$RootPath\downloads"
 $repoPath = "$RootPath\github"
 $buildPath = "$RootPath\github-build"
-$programFiles32 = $(Get-Item "env:programfiles(x86)").Value
+$ProgramFiles32 = $(Get-Item "env:programfiles(x86)").Value
 
 if ([string]::IsNullOrEmpty($Python2Path)) { 
     $Python2Path = $env:PYTHONHOME
@@ -45,19 +56,19 @@ $downloads = $(
     @{name="wget";
         url="https://eternallybored.org/misc/wget/releases/wget-1.19.2-win$Bitness.zip"; 
         filename="wget-1.19.2-win$Bitness.zip";
-        extractPath="$($env:TEMP)\wget"},
+        extractPath="$env:TEMP\wget"},
     @{name="Python2";
         url="https://www.python.org/ftp/python/2.7.14/python-2.7.14.$bitArch3.msi";
         filename="python-2.7.14.$bitArch3.msi";
-        extractPath="$($env:TEMP)\python2";
+        extractPath="$env:TEMP\python2";
         installPath="$Python2Path";
         addPath="$Python2Path"},
     @{name="NSIS";
         url="https://downloads.sourceforge.net/project/nsis/NSIS%203/3.02.1/nsis-3.02.1-setup.exe";
         filename="nsis-3.02.1-setup.exe";
         extractPath="$buildPath\nsis";
-        installPath="$programFiles32\NSIS\";
-        addPath="$programFiles32\NSIS\bin"},
+        installPath="$ProgramFiles32\NSIS\";
+        addPath="$ProgramFiles32\NSIS\bin"},
     @{name="Qt";
         url="http://download.qt.io/official_releases/qt/$QtRelease/$QtReleaseFull/qt-opensource-windows-x86-$QtReleaseFull.exe";
         filename="qt-opensource-windows-x86-$QtReleaseFull.exe";
@@ -74,6 +85,7 @@ $downloads = $(
     @{name="CMake";
         url="https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
         filename="cmake-3.10.2-$bitArch2-$bitArch1.zip";
+        collapseDir=$true;
         extractpath="$buildpath\cmake"},
     @{name="Boost";
         url="https://dl.bintray.com/boostorg/release/$BoostVersion/source/$boostBaseName.zip";
@@ -89,14 +101,6 @@ $env:BOOST_ROOT="$buildPath\boost"
 $env:BOOST_BUILD_ROOT=$env:BOOST_ROOT
 $env:BOOST_TARGET_ROOT=$env:BOOST_ROOT
 $env:Qt5_DIR=$buildQtPath
-$env:RAIBLOCKS_GUI="ON"
-$env:ENABLE_AVX2="ON"
-$env:CRYPTOPP_CUSTOM="ON"
-$env:BOOST_THEADING = "multi"  # (multi|single)
-$env:BOOST_RUNTIME_LINK = "static,shared"    # (static|shared)
-$env:BOOST_LINK = "static"
-$env:BOOST_ARCH = "x86"
-$env:ADDRESS_MODEL = "--address-mode=32"
 $env:FINDBOOST_PATH = ""
 
 $boostRoot = "$env:BOOST_ROOT"
@@ -107,7 +111,7 @@ $boostLibDir = "$env:BOOST_TARGET_ROOT\stage\lib"
 #$boostLibDir2 = "$env:BOOST_TARGET_ROOT\libs"
 $boostBinPath = "$env:BOOST_ROOT\bin"
 $boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
-$boostProc = "j$($processors)"
+$boostProc = "j$processors"
 
 
 ##############################################################################
@@ -134,52 +138,31 @@ function Set-VsCmd
         [int]$version
     )
     $VS_VERSION = @{ 2012 = "11.0"; 2013 = "12.0"; 2015 = "14.0"; 2017 = "14.1" }
-    if ($version -eq 2017)
+    $VS_VERSION2= @{ 2012 = "11"; 2013 = "12"; 2015 = "14"; 2017 = "15" }
+
+    if ($version -ge 2015)
     {
-        $env:VsVersion = "14.1"
-        $env:msvcver="msvc-14.1"
-        Push-Location
-        $targetDir = "$programFiles32\Microsoft Visual Studio\2017"
-        Set-Location $targetDir
-        $vcvars = Get-ChildItem -Recurse vcvars32.bat | Resolve-Path -Relative 
-        $env:CMAKE_BIN = "$CMakePath\bin"
-        if ([string]::IsNullOrEmpty($CMakePath)) {
-            $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
-        }
-        $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
-        $env:VS_ARCH = "Visual Studio 15 2017"
-        Pop-Location
-    }
-    elseif ($version -eq 2015)
-    {
-        $path = "$programFiles32\Microsoft Visual Studio $($VS_VERSION[$version])"
         $env:VsVersion = $VS_VERSION[$version]
-        $env:msvcver="msvc-14.0"
+        $env:msvcver="msvc-$env:VsVersion"
         Push-Location
-        $targetDir = "$path\Common7\Tools"
+        $targetDir = $(if ($version -eq 2015) { "$ProgramFiles32\Microsoft Visual Studio $env:VsVersion" } else { "$ProgramFiles32\Microsoft Visual Studio\$version" })
         Set-Location $targetDir
-        $vcvars = "vcvarsall.bat"
+        $vcvars = Get-ChildItem -Recurse vcvars$Bitness.bat | Resolve-Path -Relative 
         $env:CMAKE_BIN = "$CMakePath\bin"
         if ([string]::IsNullOrEmpty($CMakePath)) {
             $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
         }
         $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
-        $env:VS_ARCH = "Visual Studio 14 2015"
+        $env:VS_ARCH = "Visual Studio $($VS_VERSION2[$version]) $version"
         Pop-Location
     }
     else
     {
-        if ($VS_VERSION -eq 2013) {
-            $env:msvcver="msvc-12.0"
-            $env:VS_ARCH = "Visual Studio 12 2013"
-        } else {
-            $env:msvcver="msvc-11.0"
-            $env:VS_ARCH = "Visual Studio 11 2012"
-        }
-
         $env:VsVersion = $VS_VERSION[$version]
+        $env:msvcver="msvc-$($VS_VERSION[$version])"
+        $env:VS_ARCH = "Visual Studio $($VS_VERSION2[$version]) $version"
         Push-Location
-        $targetDir = "$programFiles32\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
+        $targetDir = "$ProgramFiles32\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
         Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
         $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
@@ -194,7 +177,6 @@ function Set-VsCmd
         Write-Host "*   Setting 64-bit mode"
         $vcvars = $($vcvars -replace "32", "64") + " amd64"
         $env:VS_ARCH += " Win64"
-        $env:ADDRESS_MODEL = "--address-model=64"
     }
     Write-host "* Running $targetDir $vcvars"
     Push-Location $targetDir
@@ -285,13 +267,13 @@ function exec
 
 function Pack-EnvPath {
     return
-    $latestTs = dir "$programFiles32\Microsoft SDKs\TypeScript\" | Sort | Select -last 1 $($_.Name)
+    $latestTs = dir "$ProgramFiles32\Microsoft SDKs\TypeScript\" | Sort | Select -last 1 $_.Name
     $fso = New-Object -ComObject "Scripting.FileSystemObject"
     $shortpaths = @();
     $originalPaths = [environment]::GetEnvironmentVariable("path", "Machine").Split(";")
     foreach ($path in $originalPaths) {
         $fpath = [System.IO.Path]::GetFullPath("$path");
-        if ($fpath.StartsWith("$programFiles32\Microsoft SDKs\TypeScript\")) {
+        if ($fpath.StartsWith("$ProgramFiles32\Microsoft SDKs\TypeScript\")) {
             $fpath = "$ProgramFiles\Microsoft SDKs\TypeScript\$latestTs\";
         }
         $fspath = $fso.GetFolder("$fpath").ShortPath;
@@ -300,7 +282,7 @@ function Pack-EnvPath {
         write-host $fpath  -->  $fspath;
         $shortpaths += $fspath;
     }
-    $env:Path = $($shortpaths -join ";");
+    $env:Path = $shortpaths -join ";"
 }
 
 function Add-EnvPath {
@@ -309,6 +291,7 @@ function Add-EnvPath {
         [string] $Item = "",
         [bool] $Append = $true
     )
+    Write-Host "*   Adding to PATH $Item"
     Pack-EnvPath
     if ($Append -eq $true) {
         $env:PATH="$env:PATH;$Item"
@@ -418,7 +401,6 @@ foreach ($file in $downloads){
         Pop-Location
     }
     if ((!([string]::IsNullOrEmpty($addPath))) -and (!($env:PATH.Contains($addPath)))) {
-        Write-Host "*   Adding to PATH $addPath"
         Add-EnvPath -Item $addPath
     }
 }
@@ -443,13 +425,11 @@ if (Test-Path "$buildpath\cmake") {
 
 # add cmake to path
 if (!($env:PATH.Contains($env:CMAKE_BIN))) {
-    Write-Host "*   Adding to PATH $env:CMAKE_BIN"
     Add-EnvPath -Item $env:CMAKE_BIN
 }
 
 # add Boost.Build\bin to path
 if (!($env:PATH.Contains($boostBinPath))) {
-    Write-Host "*   Adding to PATH $boostBinPath"
     Add-EnvPath -Item $boostBinPath
 }
 
@@ -474,17 +454,17 @@ If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     $clPath = Resolve-Anypath -file  "cl.exe" -find $Bitness
     Write-Host "* Patching project-config.jam with $clPath"
     $clPathReplace = $clPath.Replace("\", "\\")
-    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:VsVersion : `"$clPath`";`nusing mpi ;`noption.set keep-going : false ;"
+    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:VsVersion : `"$clPath`";`n`noption.set keep-going : false ;"
 }
 if (!(Test-Path "$boostBuildDir\boost")) {
-    exec { & ./b2 --prefix="$($boostPrefixDir)" --build-dir=$boostBuildDir `
-        architecture="$($env:BOOST_ARCH)" `
-        toolset="$($env:msvcver)" `
+    exec { & ./b2 "--prefix=$boostPrefixDir" "--build-dir=$boostBuildDir" `
+        architecture=$env:BOOST_ARCH `
+        toolset=$env:msvcver `
+        address-model=$Bitness `
         variant=debug,release `
-        link="$($env:BOOST_LINK)" `
-        $(if (!([string]::IsNullOrEmpty($env:BOOST_RUNTIME_LINK))){"runtime-link=$($env:BOOST_RUNTIME_LINK)"}Else{""}) `
-        $(if (!([string]::IsNullOrEmpty($env:BOOST_THEADING))){"threading=$($env:BOOST_THEADING)"}Else{""}) `
-        $($env:ADDRESS_MODEL) `
+        link=$env:BOOST_LINK `
+        $(if (!([string]::IsNullOrEmpty($env:BOOST_RUNTIME_LINK))) {"runtime-link=$env:BOOST_RUNTIME_LINK"} else {""}) `
+        $(if (!([string]::IsNullOrEmpty($env:BOOST_THEADING))) {"threading=$env:BOOST_THEADING"} else {""}) `
         --build-type=complete msvc stage install }
         #--layout=versioned `
 }
@@ -521,8 +501,17 @@ if (Test-Path build) {
 }
 mkdir build | out-null
 cd build
-& cmake -G "$env:VS_ARCH" -DBOOST_ROOT=$env:BOOST_ROOT -DQt5_DIR=$env:Qt5_DIR -DBoost_DEBUG=ON -DBoost_USE_STATIC_LIBS=ON -DRAIBLOCKS_GUI=ON -DCRYPTOPP_CUSTOM=$($env:CRYPTOPP_CUSTOM) -DBOOST_CUSTOM=ON -DENABLE_AVX2=ON ..\CMakeLists.txt
+& cmake -G "$env:VS_ARCH" "-DQt5_DIR=$env:Qt5_DIR" `
+    -DBoost_USE_STATIC_LIBS=ON ` 
+    -DBOOST_ROOT=$env:BOOST_ROOT `
+    -DBoost_DEBUG=$env:BOOST_DEBUG ` 
+    -DRAIBLOCKS_GUI=$env:RAIBLOCKS_GUI ` 
+    -DCRYPTOPP_CUSTOM=$env:CRYPTOPP_CUSTOM ` 
+    -DBOOST_CUSTOM=$env:BOOST_CUSTOM `
+    -DENABLE_AVX2=$env:ENABLE_AVX2 ` 
+    ..\CMakeLists.txt
 cd ..
+cmake
 devenv /Rebuild Debug ALL_BUILD.vcxproj
 
 #$env:PATH = $env:PATH_BACKUP
