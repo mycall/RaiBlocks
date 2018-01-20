@@ -9,7 +9,7 @@
     [string]$CMakePath = $null,
     [string]$ProgramFiles = $env:ProgramFiles,
     [string]$Python2Path = $env:PYTHONPATH,
-    [switch]$FullBuild
+    [boolean]$FullBuild = $true
 )
 
 If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
@@ -337,8 +337,11 @@ if (!(Test-Path $repoPath)){
     $script:ErrorActionPreference = $backupErrorActionPreference
 }
 
-if ($FullBuild.IsPresent) {
+if ((Test-Path $buildPath) -and ($FullBuild -eq $true)) {
     Write-Host "* FULL BUILD: Deleting $buildPath"
+    if (Test-Path "$buildPath\qt") {
+        (Get-Item $buildPath\qt).Delete() | out-null
+    }
     rmdir -Force -Recurse $buildPath | out-null
 }
 
