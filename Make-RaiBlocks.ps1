@@ -139,7 +139,7 @@ function Set-VsCmd
         $env:VsVersion = "14.1"
         $env:msvcver="msvc-14.1"
         Push-Location
-        $targetDir = "$ProgramFiles\Microsoft Visual Studio\2017"
+        $targetDir = "$programFiles32\Microsoft Visual Studio\2017"
         Set-Location $targetDir
         $vcvars = Get-ChildItem -Recurse vcvars32.bat | Resolve-Path -Relative 
         $env:CMAKE_BIN = "$CMakePath\bin"
@@ -152,7 +152,7 @@ function Set-VsCmd
     }
     elseif ($version -eq 2015)
     {
-        $path = "$ProgramFiles\Microsoft Visual Studio $($VS_VERSION[$version])"
+        $path = "$programFiles32\Microsoft Visual Studio $($VS_VERSION[$version])"
         $env:VsVersion = $VS_VERSION[$version]
         $env:msvcver="msvc-14.0"
         Push-Location
@@ -179,7 +179,7 @@ function Set-VsCmd
 
         $env:VsVersion = $VS_VERSION[$version]
         Push-Location
-        $targetDir = "$ProgramFiles\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
+        $targetDir = "$programFiles32\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
         Set-Location $targetDir
         $vcvars = "vcvarsall.bat"
         $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
@@ -285,13 +285,13 @@ function exec
 
 function Pack-EnvPath {
     return
-    $latestTs = dir "$ProgramFiles\Microsoft SDKs\TypeScript\" | Sort | Select -last 1 $($_.Name)
+    $latestTs = dir "$programFiles32\Microsoft SDKs\TypeScript\" | Sort | Select -last 1 $($_.Name)
     $fso = New-Object -ComObject "Scripting.FileSystemObject"
     $shortpaths = @();
     $originalPaths = [environment]::GetEnvironmentVariable("path", "Machine").Split(";")
     foreach ($path in $originalPaths) {
         $fpath = [System.IO.Path]::GetFullPath("$path");
-        if ($fpath.StartsWith("$ProgramFiles\Microsoft SDKs\TypeScript\")) {
+        if ($fpath.StartsWith("$programFiles32\Microsoft SDKs\TypeScript\")) {
             $fpath = "$ProgramFiles\Microsoft SDKs\TypeScript\$latestTs\";
         }
         $fspath = $fso.GetFolder("$fpath").ShortPath;
