@@ -9,7 +9,7 @@
     [string]$CMakePath = $null,
     [string]$ProgramFiles = $env:ProgramFiles,
     [string]$Python2Path = $env:PYTHONPATH,
-    [boolean]$FullBuild = $true
+    [boolean]$ForceFullBuild = $true
 )
 
 If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){
@@ -24,11 +24,11 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
 
 clear
 
-$env:BOOST_DEBUG="ON"
-$env:BOOST_CUSTOM="ON"
-$env:RAIBLOCKS_GUI="ON"
-$env:ENABLE_AVX2="ON"
-$env:CRYPTOPP_CUSTOM="ON"
+$env:BOOST_DEBUG = "ON"
+$env:BOOST_CUSTOM = "ON"
+$env:RAIBLOCKS_GUI = "ON"
+$env:ENABLE_AVX2 = "ON"
+$env:CRYPTOPP_CUSTOM = "ON"
 $env:BOOST_THEADING = "multi"  # (multi|single)
 $env:BOOST_RUNTIME_LINK = "static,shared"    # (static|shared)
 $env:BOOST_LINK = "static"
@@ -75,6 +75,16 @@ $downloads = $(
         filename="nsis-3.02.1-setup.exe";
         installPath="$ProgramFiles32\NSIS\";
         addPath="$ProgramFiles32\NSIS\bin"},
+    @{name="MS MPI 8.1.1";
+        url="https://download.microsoft.com/download/9/E/D/9ED82A62-4235-4003-A59A-9F6246073F2E/MSMpiSetup.exe";
+        filename="MSMpiSetup.exe";
+        installPath="$ProgramFiles\Microsoft MPI";
+        addPath="$ProgramFiles\Microsoft MPI\Bin"},
+    @{name="MS MPI 8.1.1 SDK";
+        url="https://download.microsoft.com/download/9/E/D/9ED82A62-4235-4003-A59A-9F6246073F2E/msmpisdk.msi";
+        filename="msmpisdk.msi";
+        installPath="$ProgramFiles32\Microsoft SDKs\MPI\";
+        addPath="$ProgramFiles32\Microsoft SDKs\MPI\Bin"},
     @{name="Qt";
         url="http://download.qt.io/official_releases/qt/$QtRelease/$QtReleaseFull/qt-opensource-windows-x86-$QtReleaseFull.exe";
         filename="qt-opensource-windows-x86-$QtReleaseFull.exe";
@@ -117,6 +127,7 @@ $boostLibDir = "$env:BOOST_TARGET_ROOT\stage\lib"
 #$boostLibDir2 = "$env:BOOST_TARGET_ROOT\libs"
 $boostBinPath = "$env:BOOST_ROOT\bin"
 $boostProjectConfig = "$env:BOOST_ROOT\project-config.jam"
+$boostUserConfig = "$env:BOOST_ROOT\tools\build\src\user-config.jam"
 $boostProc = "j$processors"
 
 
@@ -198,7 +209,7 @@ function Set-VsCmd
       }
     }
     Pop-Location
-    write-host "`nVisual Studio $version Command Prompt variables set." -ForegroundColor Yellow
+    write-host "*   Visual Studio $version environment variables set."
 }
 
 function Resolve-Anypath
@@ -244,8 +255,11 @@ function exec
         [ScriptBlock] $ScriptBlock,
         [string] $StderrPrefix = "",
         [int[]] $AllowedExitCodes = @(0)
-    )
-    Write-Host "*   Calling $ScriptBlock"
+    ) 
+
+    $sb = [ScriptBlock]::Create($ScriptBlock)
+
+    Write-Host "*   Calling $sb"
 
     $backupErrorActionPreference = $script:ErrorActionPreference
 
@@ -254,14 +268,7 @@ function exec
     {
         & $ScriptBlock 2>&1 | ForEach-Object -Process `
             {
-                if ($_ -is [System.Management.Automation.ErrorRecord])
-                {
-                    "$StderrPrefix$_"
-                }
-                else
-                {
-                    "$_"
-                }
+                if ($_ -is [System.Management.Automation.ErrorRecord]) { "$StderrPrefix$_" } else { "$_" }
             }
         if ($AllowedExitCodes -notcontains $LASTEXITCODE)
         {
@@ -337,12 +344,18 @@ if (!(Test-Path $repoPath)){
     $script:ErrorActionPreference = $backupErrorActionPreference
 }
 
-if ((Test-Path $buildPath) -and ($FullBuild -eq $true)) {
-    Write-Host "* FULL BUILD: Deleting $buildPath"
+if ((Test-Path $buildPath) -and ($ForceFullBuild -eq $true)) {
+    Write-Host "* Forcing full build, deleting $buildPath"
     if (Test-Path "$buildPath\qt") {
         (Get-Item $buildPath\qt).Delete() | out-null
     }
-    rmdir -Force -Recurse $buildPath | out-null
+    if (Test-Path "$RootPath\empty") {
+        rmdir "$RootPath\empty" | out-null
+    }
+    mkdir "$RootPath\empty" | out-null
+    robocopy "$RootPath\empty" $buildPath /mir | out-null 
+    rmdir $buildPath | out-null
+    rmdir "$RootPath\empty" | out-null
 }
 
 if (!(Test-Path $buildPath)){
@@ -363,7 +376,7 @@ foreach ($file in $downloads){
     $addPath = "$($file.addPath)"
     $collapseDir = $(if ($file.collapseDir) {$true} else {$false})
     $wget = "$env:TEMP\wget\wget.exe"
-    $targetDir = $(if (!([string]::IsNullOrEmpty($installPath))) {$installPath} else {$(if ($collapseDir -eq $true) {Split-Path $extractPath -Parent} else {$extractPath})})
+    $targetDir = $(if (!([string]::IsNullOrEmpty($installPath))) {$installPath} else {$extractPath})
     Write-Host "* Checking $name is installed in $targetDir"
 
     if (!(Test-Path $downloadPath)) {
@@ -471,22 +484,29 @@ if (!(Test-Path "project-config.jam")) {
 
 If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
     Write-Host "* Fixing $boostProjectConfig"
-    $clPath = Resolve-Anypath -file  "cl.exe" -find $Bitness
-    Write-Host "* Patching project-config.jam with $clPath"
-    $clPathReplace = $clPath.Replace("\", "\\")
-    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:VsVersion : `"$clPath`";`n`noption.set keep-going : false ;"
+    $clPath = Resolve-Anypath -file  "cl.exe" -find "HostX64.$bitArch1"
+    $ar = $(if ($Bitness -eq 64) {"<address-model>64 ; "} else {""})
+    $rpl = "using msvc : $env:VsVersion : `"$clPath`" ;"
+    #$rpl = "using msvc : $env:VsVersion : `"$clPath`" ; `nusing python : 2.7 : $Python2Path : $Python2Path\include : $Python2Path\libs : $ar".Replace("\", "\\")
+    Write-Host "* Patching $boostProjectConfig with $rpl"
+    Invoke-SearchReplace $boostProjectConfig "using msvc ;" $rpl
+    if (!(Test-Path $boostUserConfig)) {
+        Add-Content $boostUserConfig "using mpi ; "
+    }
 }
+
 if (!(Test-Path "$boostBuildDir\boost")) {
-    exec { & ./b2 "--prefix=$boostPrefixDir" "--build-dir=$boostBuildDir" `
-        architecture=$env:BOOST_ARCH `
-        toolset=$env:msvcver `
-        address-model=$Bitness `
+    exec { & ./b2 "--prefix=$($boostPrefixDir)" `
+        architecture=$($env:BOOST_ARCH) `
+        toolset=$($env:msvcver) `
         variant=debug,release `
-        link=$env:BOOST_LINK `
+        link=$($env:BOOST_LINK) `
+        address-model=$Bitness `
         $(if (!([string]::IsNullOrEmpty($env:BOOST_RUNTIME_LINK))) {"runtime-link=$env:BOOST_RUNTIME_LINK"} else {""}) `
         $(if (!([string]::IsNullOrEmpty($env:BOOST_THEADING))) {"threading=$env:BOOST_THEADING"} else {""}) `
-        --build-type=complete msvc stage install }
+        --debug-configuration --build-type=complete msvc stage install }
         #--layout=versioned `
+        # "--build-dir=$($boostBuildDir)"
 }
 
 ## Make Qt source when available
@@ -495,19 +515,19 @@ if (Test-Path $buildQtSrcPath) {
     if (!(Test-Path $buildQtPath)) {
         & ./configure -shared -opensource -nomake examples -nomake tests -confirm-license -prefix $env:Qt5_DIR
     }
-    & - 
-    & cmake install
+    & nmake 
+    & nmake install
 }
 
 cd $buildPath
 
-if (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "Boost $BoostVersion")) {
+if (!(Get-Content "CMakeLists.txt" | Select-String -Pattern "find_package .Boost $BoostVersion")) {
     Write-Host "* Fixing CMakeLists.txt with Boost $BoostVersion"
     Invoke-SearchReplace "CMakeLists.txt" "find_package \(Boost \d+\.\d+\.\d+" "find_package (Boost $BoostVersion"
 }
 
 exec { & git submodule update --init --recursive }
-if (Test-Path buildCMakeCache.txt) {
+if (Test-Path CMakeCache.txt) {
     del CMakeCache.txt | out-null
 }
 if (Test-Path CMakeFiles) {
@@ -521,18 +541,20 @@ if (Test-Path build) {
 }
 mkdir build | out-null
 cd build
-& cmake -G "$env:VS_ARCH" 
-    -DQt5_DIR=$($env:Qt5_DIR) `
-    -DBoost_USE_STATIC_LIBS=ON ` 
-    -DBOOST_ROOT=$($env:BOOST_ROOT) `
-    -DBoost_DEBUG=$($env:BOOST_DEBUG) ` 
-    -DRAIBLOCKS_GUI=$($env:RAIBLOCKS_GUI) ` 
-    -DCRYPTOPP_CUSTOM=$($env:CRYPTOPP_CUSTOM) ` 
-    -DBOOST_CUSTOM=$($env:BOOST_CUSTOM) `
-    -DENABLE_AVX2=$($env:ENABLE_AVX2) ` 
-    ..\CMakeLists.txt
+exec { & cmake -G "$env:VS_ARCH" `
+    -D Qt5_DIR=$($env:Qt5_DIR) `
+    -D Boost_USE_STATIC_LIBS=ON `
+    -D BOOST_ROOT=$($env:BOOST_ROOT) `
+    -D BOOST_INCLUDEDIR=$($boostIncludeDir) `
+    -D BOOST_LIBRARYDIR=$($boostLibDir) `
+    -D Boost_DEBUG=$($env:BOOST_DEBUG) `
+    -D RAIBLOCKS_GUI=$($env:RAIBLOCKS_GUI) `
+    -D CRYPTOPP_CUSTOM=$($env:CRYPTOPP_CUSTOM) `
+    -D ENABLE_AVX2=$($env:ENABLE_AVX2) `
+    -D BOOST_CUSTOM=$($env:BOOST_CUSTOM) ..\CMakeLists.txt }
 cd ..
-cmake
-devenv /Rebuild Debug ALL_BUILD.vcxproj
-
+#cmake
+if (Test-Path ALL_BUILD.vcxproj) {
+    devenv /Rebuild Debug ALL_BUILD.vcxproj
+}
 #$env:PATH = $env:PATH_BACKUP
