@@ -26,7 +26,7 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
 clear
 
 $env:BOOST_DEBUG = "ON"
-$env:BOOST_CUSTOM = "OFF"
+$env:BOOST_CUSTOM = "ON"
 $env:RAIBLOCKS_GUI = "ON"
 $env:ENABLE_AVX2 = "ON"
 $env:CRYPTOPP_CUSTOM = "ON"
@@ -118,7 +118,9 @@ $downloads = $(
         url               = "https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
         filename          = "cmake-3.10.2-$bitArch2-$bitArch1.zip";
         collapseDir       = $true;
-        extractpath       = "$buildPath\cmake"
+        extractpath       = "$RootPath\cmake";
+        linkedInstallName = "cmake";
+        linkedInstallPath = "$RootPath\cmake";
     },
     #@{
     #    name              = "Boost Source";
@@ -465,22 +467,20 @@ if (!([string]::IsNullOrEmpty($env:PATH_BACKUP))) {
 }
 $env:PATH_BACKUP = $env:PATH
 
-if (!(Test-Path $RootPath)) {
-    mkdir $RootPath | out-null
+if (!(Test-Path $repoPath)) {
+    mkdir $repoPath | out-null
 }
 
 if (Test-Path $repoPath) {
-    Write-Host "* Refreshing $GithubRepo into $repoPath"
-    cd $repoPath
-    git pull | Out-Null
+    Write-Host "* Clearing $repoPath"
+    rm -Force -Recurse $repoPath | Out-Null
 }
-else {
-    Write-Host "* Cloning $GithubRepo into $repoPath"
-    $backupErrorActionPreference = $script:ErrorActionPreference
-    $script:ErrorActionPreference = "Stop"
-    & git clone -q $GithubRepo $repoPath
-    $script:ErrorActionPreference = $backupErrorActionPreference
-}
+
+Write-Host "* Cloning $GithubRepo into $repoPath"
+$backupErrorActionPreference = $script:ErrorActionPreference
+$script:ErrorActionPreference = "Stop"
+& git clone -q $GithubRepo $repoPath
+$script:ErrorActionPreference = $backupErrorActionPreference
 
 if ((Test-Path $buildPath) -and ($ForceFullBuild -eq $true)) {
     Write-Host "* Forcing full build, deleting $buildPath"
@@ -497,9 +497,8 @@ if ((Test-Path $buildPath) -and ($ForceFullBuild -eq $true)) {
 }
 
 Write-Host "* Copying $repoPath into $buildPath"
-cd $repoPath
-copy -Recurse -Force . $buildPath | out-null
-
+robocopy $repoPath $buildPath /mir | out-null 
+ 
 Process-Downloads
 
 Write-Host "* Building Nano..."
