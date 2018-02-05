@@ -469,7 +469,12 @@ if (!(Test-Path $RootPath)) {
     mkdir $RootPath | out-null
 }
 
-if (!(Test-Path $repoPath)) {
+if (Test-Path $repoPath) {
+    Write-Host "* Refreshing $GithubRepo into $repoPath"
+    cd $repoPath
+    git pull | Out-Null
+}
+else {
     Write-Host "* Cloning $GithubRepo into $repoPath"
     $backupErrorActionPreference = $script:ErrorActionPreference
     $script:ErrorActionPreference = "Stop"
@@ -491,10 +496,9 @@ if ((Test-Path $buildPath) -and ($ForceFullBuild -eq $true)) {
     rmdir "$RootPath\empty" | out-null
 }
 
-if (!(Test-Path $buildPath)) {
-    Write-Host "* Creating working repo from $repoPath into $buildPath"
-    copy -Recurse $repoPath $buildPath | out-null
-}
+Write-Host "* Copying $repoPath into $buildPath"
+cd $repoPath
+copy -Recurse -Force . $buildPath | out-null
 
 Process-Downloads
 
@@ -580,8 +584,6 @@ if (Test-Path CMakeFiles) {
 if (Test-Path build) {
     rm -Force -Recurse build
 }
-mkdir build | out-null
-cd build
 
 cmake -G $env:VS_ARCH `
 -DQt5_DIR="$($env:Qt5_DIR)" `
@@ -591,9 +593,8 @@ cmake -G $env:VS_ARCH `
 -BOOST_CUSTOM=$env:BOOST_CUSTOM `
 -DCRYPTOPP_CUSTOM=$env:CRYPTOPP_CUSTOM `
 -T $cmakeToolsetParamValue `
-..\CMakeLists.txt
+CMakeLists.txt
 
-cd ..
 if (Test-Path ALL_BUILD.vcxproj) {
     devenv /Rebuild Debug ALL_BUILD.vcxproj
 }
