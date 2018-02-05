@@ -25,7 +25,7 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
 
 clear
 
-$env:BOOST_DEBUG = "ON"
+$env:BOOST_DEBUG = "OFF"
 $env:BOOST_CUSTOM = "ON"
 $env:RAIBLOCKS_GUI = "ON"
 $env:ENABLE_AVX2 = "ON"
@@ -118,7 +118,7 @@ $downloads = $(
         url               = "https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
         filename          = "cmake-3.10.2-$bitArch2-$bitArch1.zip";
         collapseDir       = $true;
-        extractpath       = "$RootPath\cmake";
+        extractPath       = "$RootPath\cmake";
         linkedInstallName = "cmake";
         linkedInstallPath = "$RootPath\cmake";
     },
@@ -133,11 +133,13 @@ $downloads = $(
         name              = "Boost Binary";
         url               = "https://dl.bintray.com/boostorg/release/$BoostVersion/binaries/$boostBaseName-msvc-14.1-$Bitness.exe";
         filename          = "$boostBaseName-msvc-14.1-$Bitness.exe";
-        installPath       = $boostPrefixPath;
-        installParams     = "/DIR=`"$boostPrefixPath`"";
+        installPath       = "$RootPath\boost";
+        installParams     = "/DIR=`"$RootPath\boost`"";
         removeArch        = $true;
         removePath        = "$BoostPath\lib$Bitness-msvc-14.1"
         removeSearchFor   = $bitArch7
+        linkedInstallName = "boost";
+        linkedInstallPath = "$RootPath\boost";
     },
     @{
         name              = "Qt";
@@ -176,6 +178,8 @@ $boostThreading = @("threading=$env:BOOST_THEADING", "")[[bool][string]::IsNullO
 $boostArch = "architecture=$env:BOOST_ARCH"
 $boostVariant = @("variant=$env:BOOST_VARIANT", "")[[bool][string]::IsNullOrEmpty($env:BOOST_VARIANT)]
 $boostProjectConfigBitness = @("", "<address-model>64 ; ")[[bool]$Bitness -eq 64]
+if ($CMakePath -eq $null) { $CMakePath = "$buildPath\cmake" }
+
 
 ##############################################################################
 
@@ -390,6 +394,8 @@ function Process-Downloads {
         $removeArch = $($file.removeArch)
         $removePath = "$($file.removePath)"
         $removeSearchFor = "$($file.removeSearchFor)"
+        $realLinkedInstallPath = "$installPath\$linkedInstallPath"
+        if ($installPath -eq $linkedInstallPath) { $realLinkedInstallPath = $installPath }
         Write-Host "* Checking $name is installed in $targetDir"
 
         if (!(Test-Path $downloadPath)) {
@@ -426,6 +432,7 @@ function Process-Downloads {
             }
             Start-Process -FilePath "$filePath" -ArgumentList $installParams -Wait
             if ($removeArch) {
+                Write-Host "*   Removing $removeSearchFor in filenames inside $installPath\$removePath."
                 dir "$installPath\$removePath" | Rename-Item -NewName { $_.Name -replace $removeSearchFor,"" }
 
             }
@@ -442,11 +449,20 @@ function Process-Downloads {
             }
             Pop-Location
         }
-        if ((!([string]::IsNullOrEmpty($linkedInstallName))) -and (Test-Path "$installPath\$linkedInstallPath") -and (!(Test-Path "$buildPath\$linkedInstallName"))) {
-            Write-Host "*   Creating symbolic link from $buildPath\$linkedInstallName to $installPath\$linkedInstallPath"
+
+        if ((!([string]::IsNullOrEmpty($linkedInstallName))) -and (!([string]::IsNullOrEmpty($extractPath))) -and (Test-Path $extractPath) -and (!(Test-Path "$buildPath\$linkedInstallName"))) {
+            Write-Host "*   Creating symbolic link from $buildPath\$linkedInstallName to $extractPath"
             Push-Location
             cd $buildPath
-            New-Item -ItemType SymbolicLink -Name $linkedInstallName -Target $installPath\$linkedInstallPath | out-null
+            New-Item -ItemType SymbolicLink -Name $linkedInstallName -Target $extractPath | out-null
+            Pop-Location
+        } 
+
+        if ((!([string]::IsNullOrEmpty($linkedInstallName))) -and (Test-Path $realLinkedInstallPath) -and (!(Test-Path "$buildPath\$linkedInstallName"))) {
+            Write-Host "*   Creating symbolic link from $buildPath\$linkedInstallName to $realLinkedInstallPath"
+            Push-Location
+            cd $buildPath
+            New-Item -ItemType SymbolicLink -Name $linkedInstallName -Target $realLinkedInstallPath | out-null
             Pop-Location
         }
         if ((!([string]::IsNullOrEmpty($addPath))) -and (!($env:PATH.Contains($addPath)))) {
