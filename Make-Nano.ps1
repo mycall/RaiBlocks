@@ -74,8 +74,8 @@ $downloads = $(
     },
     @{
         name              = "wget";
-        url               = "https://eternallybored.org/misc/wget/releases/wget-1.19.2-win$Bitness.zip"; 
-        filename          = "wget-1.19.2-win$Bitness.zip";
+        url               = "https://eternallybored.org/misc/wget/releases/wget-1.19.4-win$Bitness.zip"; 
+        filename          = "wget-1.19.4-win$Bitness.zip";
         extractPath       = "$env:TEMP\wget"
     },
     @{
