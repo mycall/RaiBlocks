@@ -66,17 +66,17 @@ if ([string]::IsNullOrEmpty($Python2Path)) {
 
 $downloads = $(
     @{
-        name              = "wget";
-        url               = "https://eternallybored.org/misc/wget/releases/wget-1.19.2-win$Bitness.zip"; 
-        filename          = "wget-1.19.2-win$Bitness.zip";
-        extractPath       = "$env:TEMP\wget"
-    },
-    @{
         name              = "7zip";
         url               = "http://www.7-zip.org/a/7z1800$bitArch4.exe"; 
         filename          = "7z1800$bitArch4.exe";
         installPath       = "$ProgramFiles\7-Zip";
         addPath           = "$ProgramFiles\7-Zip"
+    },
+    @{
+        name              = "wget";
+        url               = "https://eternallybored.org/misc/wget/releases/wget-1.19.2-win$Bitness.zip"; 
+        filename          = "wget-1.19.2-win$Bitness.zip";
+        extractPath       = "$env:TEMP\wget"
     },
     @{
         name              = "Python2";
