@@ -430,7 +430,11 @@ function Process-Downloads {
                 Write-Host "*** $installComment ***" -ForegroundColor Yellow 
                 pause
             }
-            Start-Process -FilePath "$filePath" -ArgumentList $installParams -Wait
+            if ([string]::IsNullOrEmpty($installParams)) {
+                Start-Process -FilePath "$filePath" -Wait
+            } else {
+                Start-Process -FilePath "$filePath" -ArgumentList $installParams -Wait
+            }
             if ($removeArch) {
                 Write-Host "*   Removing $removeSearchFor in filenames inside $installPath\$removePath."
                 dir "$installPath\$removePath" | Rename-Item -NewName { $_.Name -replace $removeSearchFor,"" }
@@ -497,6 +501,19 @@ $backupErrorActionPreference = $script:ErrorActionPreference
 $script:ErrorActionPreference = "Stop"
 & git clone -q $GithubRepo $repoPath
 $script:ErrorActionPreference = $backupErrorActionPreference
+
+if (Test-Path $buildPath\qt) {
+    (Get-Item $buildPath\qt).Delete() | out-null
+}
+
+if (Test-Path $buildPath\cmake) {
+    (Get-Item $buildPath\cmake).Delete() | out-null
+}
+
+if (Test-Path $buildPath\boost) {
+    (Get-Item $buildPath\boost).Delete() | out-null
+}
+
 
 if ((Test-Path $buildPath) -and ($ForceFullBuild -eq $true)) {
     Write-Host "* Forcing full build, deleting $buildPath"
@@ -600,15 +617,20 @@ if (Test-Path build) {
     rm -Force -Recurse build
 }
 
+mkdir build
+cd build
+
 cmake -G $env:VS_ARCH `
 -DQt5_DIR="$($env:Qt5_DIR)" `
 -DBOOST_ROOT="$($boostPrefixPath)" `
--DBoost_DEBUG=$env:BOOST_DEBUG `
--DRAIBLOCKS_GUI=$env:RAIBLOCKS_GUI `
--BOOST_CUSTOM=$env:BOOST_CUSTOM `
--DCRYPTOPP_CUSTOM=$env:CRYPTOPP_CUSTOM `
+-DBoost_DEBUG="$($env:BOOST_DEBUG)" `
+-DRAIBLOCKS_GUI="$($env:RAIBLOCKS_GUI) `
+-BOOST_CUSTOM="$($env:BOOST_CUSTOM)" `
+-DCRYPTOPP_CUSTOM="$($env:CRYPTOPP_CUSTOM) `
 -T $cmakeToolsetParamValue `
-CMakeLists.txt
+..\CMakeLists.txt
+
+cd ..
 
 if (Test-Path ALL_BUILD.vcxproj) {
     devenv /Rebuild Debug ALL_BUILD.vcxproj
