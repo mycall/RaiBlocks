@@ -617,16 +617,16 @@ if (Test-Path build) {
     rm -Force -Recurse build
 }
 
-mkdir build
+mkdir build | out-null
 cd build
 
-cmake -G $env:VS_ARCH `
--DQt5_DIR="$($env:Qt5_DIR)" `
--DBOOST_ROOT="$($boostPrefixPath)" `
--DBoost_DEBUG="$($env:BOOST_DEBUG)" `
--DRAIBLOCKS_GUI="$($env:RAIBLOCKS_GUI) `
--BOOST_CUSTOM="$($env:BOOST_CUSTOM)" `
--DCRYPTOPP_CUSTOM="$($env:CRYPTOPP_CUSTOM) `
+cmake -G "$env:VS_ARCH" `
+-D Qt5_DIR="$($env:Qt5_DIR)" `
+-D BOOST_ROOT="$($boostPrefixPath)" `
+-D Boost_DEBUG="$($env:BOOST_DEBUG)" `
+-D RAIBLOCKS_GUI="$($env:RAIBLOCKS_GUI)" `
+-B OOST_CUSTOM="$($env:BOOST_CUSTOM)" `
+-D CRYPTOPP_CUSTOM="$($env:CRYPTOPP_CUSTOM)" `
 -T $cmakeToolsetParamValue `
 ..\CMakeLists.txt
 
