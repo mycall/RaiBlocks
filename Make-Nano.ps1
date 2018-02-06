@@ -25,8 +25,87 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
 
 clear
 
-$env:BOOST_DEBUG = "OFF"
-$env:BOOST_CUSTOM = "ON"
+$ProgramFiles32 = $(Get-Item "env:programfiles(x86)").Value
+
+function Set-VsCmd {
+    param(
+        [parameter(Mandatory = $true, HelpMessage = "Enter VS version as 2012, 2013, 2015, 2017")]
+        [ValidateSet(2012, 2013, 2015, 2017)]
+        [int]$version
+    )
+    $VS_VERSION = @{ 2012 = "11.0"; 2013 = "12.0"; 2015 = "14.0"; 2017 = "14.1" }
+    $VS_VERSION2 = @{ 2012 = "11"; 2013 = "12"; 2015 = "14"; 2017 = "15" }
+
+    write-host "* Searching for Visual Studio"
+
+    if ($version -ge 2015) {
+        $env:VsVersion = $VS_VERSION[$version]
+        $env:msvcver = "msvc-$env:VsVersion"
+        Push-Location
+        $targetDir = $(if ($version -eq 2015) { "$ProgramFiles32\Microsoft Visual Studio $env:VsVersion" } else { "$ProgramFiles32\Microsoft Visual Studio\$version" })
+        Set-Location $targetDir
+        $vcvars = Get-ChildItem -Recurse vcvarsall.bat | Resolve-Path -Relative 
+        $env:CMAKE_BIN = "$CMakePath\bin"
+        if ([string]::IsNullOrEmpty($CMakePath)) {
+            $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
+        }
+        $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
+        $env:VS_ARCH = "Visual Studio $($VS_VERSION2[$version]) $version"
+        Pop-Location
+    }
+    else {
+        $env:VsVersion = $VS_VERSION[$version]
+        $env:msvcver = "msvc-$($VS_VERSION[$version])"
+        $env:VS_ARCH = "Visual Studio $($VS_VERSION2[$version]) $version"
+        Push-Location
+        $targetDir = "$ProgramFiles32\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
+        Set-Location $targetDir
+        $vcvars = "vcvarsall.bat"
+        $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
+        Pop-Location
+    }
+  
+    if (!(Test-Path (Join-Path $targetDir $vcvars))) {
+        "* Error: Visual Studio $version not installed"
+        return
+    }
+    $is64 = $(Test-Path "env:ProgramFiles(x86)")
+    if ($Bitness -eq "64") { 
+        Write-Host "*   Setting 64-bit mode"
+        if ($is64) {
+            $vcvars = $($vcvars -replace "all", "64");
+        }
+        else {
+            $vcvars = $($vcvars -replace "all", "x86_amd64");
+        }
+        $env:VS_ARCH += " Win64"
+    }
+    else {
+        if ($is64) {
+            $vcvars = $($vcvars -replace "all", "amd64_x86");
+        }
+        else {
+            $vcvars = $($vcvars -replace "all", "x86");
+        }
+    }
+    Write-host "* Running $targetDir $vcvars"
+    Push-Location $targetDir
+    $vcvars += "&set"
+    cmd /c $vcvars |
+        ForEach-Object {
+        if ($_ -match "(.*?)=(.*)") {
+            Set-Item -force -path "ENV:\$($matches[1])" -value "$($matches[2])"
+        }
+    }
+    Pop-Location
+    write-host "*   Visual Studio $version environment variables set."
+}
+
+## setup Visual Studio path
+Set-VsCmd -version $VsVersion
+
+$env:BOOST_DEBUG = "ON"
+$env:BOOST_CUSTOM = "OFF"
 $env:RAIBLOCKS_GUI = "ON"
 $env:ENABLE_AVX2 = "ON"
 $env:CRYPTOPP_CUSTOM = "ON"
@@ -52,10 +131,9 @@ $boostPrefixPath = "$buildPath\boost"
 $boostBuildPath = "$buildPath\boost-build"
 $boostBaseName = "boost_" + $BoostVersion.Replace(".", "_")
 $boostBaseNameShort = "boost-" + $BoostVersion.Replace(".0", "").Replace(".", "_")
-$cmakeToolsetParamValue = $(if ($Bitness -eq 64) {"v141,host=x64"} else {"v141,host=x86"}) 
+$cmakeToolset = $(if ($Bitness -eq 64) {"v141,host=x64"} else {"v141,host=x86"}) 
 $QtReleaseFull = "$QtRelease.0"
 $downloadPath = "$RootPath\downloads"
-$ProgramFiles32 = $(Get-Item "env:programfiles(x86)").Value
 
 if ([string]::IsNullOrEmpty($Python2Path)) { 
     $Python2Path = $env:PYTHONHOME
@@ -131,12 +209,12 @@ $downloads = $(
     #},
     @{
         name              = "Boost Binary";
-        url               = "https://dl.bintray.com/boostorg/release/$BoostVersion/binaries/$boostBaseName-msvc-14.1-$Bitness.exe";
-        filename          = "$boostBaseName-msvc-14.1-$Bitness.exe";
+        url               = "https://dl.bintray.com/boostorg/release/$BoostVersion/binaries/$boostBaseName-$env:msvcver-$Bitness.exe";
+        filename          = "$boostBaseName-$env:msvcver-$Bitness.exe";
         installPath       = "$RootPath\boost";
         installParams     = "/DIR=`"$RootPath\boost`"";
         removeArch        = $true;
-        removePath        = "$BoostPath\lib$Bitness-msvc-14.1"
+        removePath        = "$BoostPath\lib$Bitness-$env:msvcver"
         removeSearchFor   = $bitArch7
         linkedInstallName = "boost";
         linkedInstallPath = "$RootPath\boost";
@@ -167,7 +245,7 @@ $env:FINDBOOST_PATH = ""
 #$boostIncludePath = "$boostPrefixPath\include\$boostBaseNameShort\boost"
 $boostIncludePath = "$boostPrefixPath\boost"
 $boostLibPath = "$boostPrefixPath\libs"
-$boostLibPath2 = "$boostPrefixPath\lib$bitArch6-msvc-14.1"
+$boostLibPath2 = "$boostPrefixPath\lib$bitArch6-$env:msvcver"
 $boostProjectConfig = "$boostSrcPath\project-config.jam"
 $boostUserConfig = "$boostSrcPath\user-config$bitArch6.jam"
 $boostUserHpp = "$boostSrcPath\boost\config\user.hpp"
@@ -197,77 +275,6 @@ function Unzip {
     $script:ErrorActionPreference = $backupErrorActionPreference
 }
 
-function Set-VsCmd {
-    param(
-        [parameter(Mandatory = $true, HelpMessage = "Enter VS version as 2012, 2013, 2015, 2017")]
-        [ValidateSet(2012, 2013, 2015, 2017)]
-        [int]$version
-    )
-    $VS_VERSION = @{ 2012 = "11.0"; 2013 = "12.0"; 2015 = "14.0"; 2017 = "14.1" }
-    $VS_VERSION2 = @{ 2012 = "11"; 2013 = "12"; 2015 = "14"; 2017 = "15" }
-
-    if ($version -ge 2015) {
-        $env:VsVersion = $VS_VERSION[$version]
-        $env:msvcver = "msvc-$env:VsVersion"
-        Push-Location
-        $targetDir = $(if ($version -eq 2015) { "$ProgramFiles32\Microsoft Visual Studio $env:VsVersion" } else { "$ProgramFiles32\Microsoft Visual Studio\$version" })
-        Set-Location $targetDir
-        $vcvars = Get-ChildItem -Recurse vcvarsall.bat | Resolve-Path -Relative 
-        $env:CMAKE_BIN = "$CMakePath\bin"
-        if ([string]::IsNullOrEmpty($CMakePath)) {
-            $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'})\bin"
-        }
-        $env:FINDBOOST_PATH = "$(Get-ChildItem -Recurse FindBoost.cmake | Resolve-Path)" | Convert-Path 
-        $env:VS_ARCH = "Visual Studio $($VS_VERSION2[$version]) $version"
-        Pop-Location
-    }
-    else {
-        $env:VsVersion = $VS_VERSION[$version]
-        $env:msvcver = "msvc-$($VS_VERSION[$version])"
-        $env:VS_ARCH = "Visual Studio $($VS_VERSION2[$version]) $version"
-        Push-Location
-        $targetDir = "$ProgramFiles32\Microsoft Visual Studio $($VS_VERSION[$version])\VC"
-        Set-Location $targetDir
-        $vcvars = "vcvarsall.bat"
-        $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
-        Pop-Location
-    }
-  
-    if (!(Test-Path (Join-Path $targetDir $vcvars))) {
-        "* Error: Visual Studio $version not installed"
-        return
-    }
-    $is64 = $(Test-Path "env:ProgramFiles(x86)")
-    if ($Bitness -eq "64") { 
-        Write-Host "*   Setting 64-bit mode"
-        if ($is64) {
-            $vcvars = $($vcvars -replace "all", "64");
-        }
-        else {
-            $vcvars = $($vcvars -replace "all", "x86_amd64");
-        }
-        $env:VS_ARCH += " Win64"
-    }
-    else {
-        if ($is64) {
-            $vcvars = $($vcvars -replace "all", "amd64_x86");
-        }
-        else {
-            $vcvars = $($vcvars -replace "all", "x86");
-        }
-    }
-    Write-host "* Running $targetDir $vcvars"
-    Push-Location $targetDir
-    $vcvars += "&set"
-    cmd /c $vcvars |
-        ForEach-Object {
-        if ($_ -match "(.*?)=(.*)") {
-            Set-Item -force -path "ENV:\$($matches[1])" -value "$($matches[2])"
-        }
-    }
-    Pop-Location
-    write-host "*   Visual Studio $version environment variables set."
-}
 
 function Resolve-Anypath {
     param ($file, $find)
@@ -479,8 +486,6 @@ function Process-Downloads {
 ##############################################################################
 ##############################################################################
 
-Write-Host "* Preparing build tools..."
-
 if (!([string]::IsNullOrEmpty($env:PATH_BACKUP))) {
     Write-Host "* Restoring previous path backup."
     $env:PATH = $env:PATH_BACKUP
@@ -532,12 +537,10 @@ if ((Test-Path $buildPath) -and ($ForceFullBuild -eq $true)) {
 Write-Host "* Copying $repoPath into $buildPath"
 robocopy $repoPath $buildPath /mir | out-null 
  
+Write-Host "* Preparing build tools..."
 Process-Downloads
 
 Write-Host "* Building Nano..."
-
-## setup Visual Studio path
-Set-VsCmd -version $VsVersion
 
 # add python to path
 if ([string]::IsNullOrEmpty($env:PYTHONPATH)) {
@@ -613,24 +616,15 @@ if (Test-Path CMakeFiles) {
     rm -Force -Recurse CMakeFiles | out-null
 }
 
-if (Test-Path build) {
-    rm -Force -Recurse build
-}
-
-mkdir build | out-null
-cd build
-
-cmake -G "$env:VS_ARCH" `
+cmake -G "$env:VS_ARCH" -T "$cmakeToolset" `
 -D Qt5_DIR="$($env:Qt5_DIR)" `
 -D BOOST_ROOT="$($boostPrefixPath)" `
 -D Boost_DEBUG="$($env:BOOST_DEBUG)" `
 -D RAIBLOCKS_GUI="$($env:RAIBLOCKS_GUI)" `
+-D ENABLE_AVX2="$($env:ENABLE_AVX2)" `
 -B OOST_CUSTOM="$($env:BOOST_CUSTOM)" `
 -D CRYPTOPP_CUSTOM="$($env:CRYPTOPP_CUSTOM)" `
--T $cmakeToolsetParamValue `
-..\CMakeLists.txt
-
-cd ..
+CMakeLists.txt
 
 if (Test-Path ALL_BUILD.vcxproj) {
     devenv /Rebuild Debug ALL_BUILD.vcxproj
