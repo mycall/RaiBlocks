@@ -192,15 +192,15 @@ $downloads = $(
         filename          = "Git-2.16.1.2-64-bit.exe";
         installPath       = "$ProgramFiles\git";
     },
-    #@{
-    #    name              = "CMake";
-    #    url               = "https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
-    #    filename          = "cmake-3.10.2-$bitArch2-$bitArch1.zip";
-    #    collapseDir       = $true;
-    #    extractpath       = "$RootPath\cmake";
-    #    linkedInstallName = "cmake";
-    #    linkedInstallPath = "$RootPath\cmake";
-    #},
+    @{
+        name              = "CMake";
+        url               = "https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
+        filename          = "cmake-3.10.2-$bitArch2-$bitArch1.zip";
+        collapseDir       = $true;
+        extractpath       = "$RootPath\cmake";
+        linkedInstallName = "cmake";
+        linkedInstallPath = "$RootPath\cmake";
+    },
     #@{
     #    name              = "Boost Source";
     #    url               = "https://dl.bintray.com/boostorg/release/$BoostVersion/source/$boostBaseName.zip";
