@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$RootPath = "$env:USERPROFILE\Projects\RaiBlocks",
+    [string]$RootPath = "$env:USERPROFILE\Projects\Nano",
     [string]$GithubRepo = "https://github.com/clemahieu/raiblocks.git",
     [string]$VsVersion = "2017",
     [string]$Bitness = "64",
@@ -105,7 +105,7 @@ function Set-VsCmd {
 Set-VsCmd -version $VsVersion
 
 $env:BOOST_DEBUG = "ON"
-$env:BOOST_CUSTOM = "OFF"
+$env:BOOST_CUSTOM = "ON"
 $env:RAIBLOCKS_GUI = "ON"
 $env:ENABLE_AVX2 = "ON"
 $env:CRYPTOPP_CUSTOM = "ON"
@@ -134,6 +134,7 @@ $boostBaseNameShort = "boost-" + $BoostVersion.Replace(".0", "").Replace(".", "_
 $cmakeToolset = $(if ($Bitness -eq 64) {"v141,host=x64"} else {"v141,host=x86"}) 
 $QtReleaseFull = "$QtRelease.0"
 $downloadPath = "$RootPath\downloads"
+$ProgramFiles32 = $(Get-Item "env:programfiles(x86)").Value
 
 if ([string]::IsNullOrEmpty($Python2Path)) { 
     $Python2Path = $env:PYTHONHOME
@@ -191,15 +192,15 @@ $downloads = $(
         filename          = "Git-2.16.1.2-64-bit.exe";
         installPath       = "$ProgramFiles\git";
     },
-    @{
-        name              = "CMake";
-        url               = "https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
-        filename          = "cmake-3.10.2-$bitArch2-$bitArch1.zip";
-        collapseDir       = $true;
-        extractPath       = "$RootPath\cmake";
-        linkedInstallName = "cmake";
-        linkedInstallPath = "$RootPath\cmake";
-    },
+    #@{
+    #    name              = "CMake";
+    #    url               = "https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
+    #    filename          = "cmake-3.10.2-$bitArch2-$bitArch1.zip";
+    #    collapseDir       = $true;
+    #    extractpath       = "$RootPath\cmake";
+    #    linkedInstallName = "cmake";
+    #    linkedInstallPath = "$RootPath\cmake";
+    #},
     #@{
     #    name              = "Boost Source";
     #    url               = "https://dl.bintray.com/boostorg/release/$BoostVersion/source/$boostBaseName.zip";
@@ -214,7 +215,7 @@ $downloads = $(
         installPath       = "$RootPath\boost";
         installParams     = "/DIR=`"$RootPath\boost`"";
         removeArch        = $true;
-        removePath        = "$BoostPath\lib$Bitness-$env:msvcver"
+        removePath        = "lib$Bitness-$env:msvcver"
         removeSearchFor   = $bitArch7
         linkedInstallName = "boost";
         linkedInstallPath = "$RootPath\boost";
@@ -486,6 +487,8 @@ function Process-Downloads {
 ##############################################################################
 ##############################################################################
 
+Write-Host "* Preparing build tools..."
+
 if (!([string]::IsNullOrEmpty($env:PATH_BACKUP))) {
     Write-Host "* Restoring previous path backup."
     $env:PATH = $env:PATH_BACKUP
@@ -616,14 +619,18 @@ if (Test-Path CMakeFiles) {
     rm -Force -Recurse CMakeFiles | out-null
 }
 
-cmake -G "$env:VS_ARCH" -T "$cmakeToolset" `
--D Qt5_DIR="$($env:Qt5_DIR)" `
--D BOOST_ROOT="$($boostPrefixPath)" `
--D Boost_DEBUG="$($env:BOOST_DEBUG)" `
--D RAIBLOCKS_GUI="$($env:RAIBLOCKS_GUI)" `
--D ENABLE_AVX2="$($env:ENABLE_AVX2)" `
--B OOST_CUSTOM="$($env:BOOST_CUSTOM)" `
--D CRYPTOPP_CUSTOM="$($env:CRYPTOPP_CUSTOM)" `
+if (Test-Path build) {
+    rm -Force -Recurse build
+}
+
+cmake -G $env:VS_ARCH `
+-DQt5_DIR="$($env:Qt5_DIR)" `
+-DBOOST_ROOT="$($boostPrefixPath)" `
+-DBoost_DEBUG=$env:BOOST_DEBUG `
+-DRAIBLOCKS_GUI=$env:RAIBLOCKS_GUI `
+-BOOST_CUSTOM=$env:BOOST_CUSTOM `
+-DCRYPTOPP_CUSTOM=$env:CRYPTOPP_CUSTOM `
+-T $cmakeToolset `
 CMakeLists.txt
 
 if (Test-Path ALL_BUILD.vcxproj) {
