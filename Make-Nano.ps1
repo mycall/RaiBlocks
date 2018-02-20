@@ -1,6 +1,7 @@
 ﻿param(
     [string]$RootPath = "$env:USERPROFILE\Projects\Nano",
     [string]$GithubRepo = "https://github.com/clemahieu/raiblocks.git",
+    [string]$GithubBranch = "master", # default to master, empty to bypass git clone 
     [string]$VsVersion = "2017",
     [string]$Bitness = "64",
     [string]$BoostVersion = "1.66.0",
@@ -9,8 +10,9 @@
     [string]$CMakePath = $null,
     [string]$ProgramFiles = $env:ProgramFiles,
     [string]$Python2Path = $env:PYTHONPATH,
-    [boolean]$ForceFullBuild = $false,
-    [boolean]$InstallDevTools = $true
+    [boolean]$InstallDevTools = $true,
+    [boolean]$UseVsCmake = $true,
+    [boolean]$UseBoostFromSource = $false
 )
 
 If (($InstallDevTools -eq $true) -AND (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))) {
@@ -26,6 +28,7 @@ if (-NOT (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio")) {
 clear
 
 $ProgramFiles32 = $(Get-Item "env:programfiles(x86)").Value
+$bitArch1 = $(if ($Bitness -eq "64") {"x64"} else {"x86"})
 
 function Set-VsCmd {
     param(
@@ -38,8 +41,9 @@ function Set-VsCmd {
 
     write-host "* Searching for Visual Studio"
 
+    $env:VsVersion = $VS_VERSION[$version]
+    $VS_VERSION3 = $env:VsVersion.Replace(".", "")
     if ($version -ge 2015) {
-        $env:VsVersion = $VS_VERSION[$version]
         $env:msvcver = "msvc-$env:VsVersion"
         Push-Location
         $targetDir = $(if ($version -eq 2015) { "$ProgramFiles32\Microsoft Visual Studio $env:VsVersion" } else { "$ProgramFiles32\Microsoft Visual Studio\$version" })
@@ -54,7 +58,6 @@ function Set-VsCmd {
         Pop-Location
     }
     else {
-        $env:VsVersion = $VS_VERSION[$version]
         $env:msvcver = "msvc-$($VS_VERSION[$version])"
         $env:VS_ARCH = "Visual Studio $($VS_VERSION2[$version]) $version"
         Push-Location
@@ -64,6 +67,8 @@ function Set-VsCmd {
         $env:CMAKE_BIN = "$(Get-ChildItem CMake -Recurse | where {$_.Parent -match 'CMake'} | Resolve-Path -Relative)\bin"
         Pop-Location
     }
+
+    $env:CMAKE_TOOLSET = "v$VS_VERSION3,host=$bitArch1"
   
     if (!(Test-Path (Join-Path $targetDir $vcvars))) {
         "* Error: Visual Studio $version not installed"
@@ -110,12 +115,11 @@ $env:RAIBLOCKS_GUI = "ON"
 $env:ENABLE_AVX2 = "ON"
 $env:CRYPTOPP_CUSTOM = "ON"
 $env:BOOST_THEADING = "multi"  # (multi|single)
-#$env:BOOST_RUNTIME_LINK = "static"    # (static|shared)
+$env:BOOST_RUNTIME_LINK = "static"    # (static|shared)
 $env:BOOST_LINK = "static"
 $env:BOOST_ARCH = "x86"
 $env:BOOST_VARIANT = "release"
 
-$bitArch1 = $(if ($Bitness -eq "64") {"x64"} else {"x86"})
 $bitArch2 = $(if ($Bitness -eq "64") {"win64"} else {"win32"})
 $bitArch3 = $(if ($Bitness -eq "64") {"amd64"} else {""})
 $bitArch4 = $(if ($Bitness -eq "64") {"-x64"} else {""})
@@ -131,7 +135,6 @@ $boostPrefixPath = "$buildPath\boost"
 $boostBuildPath = "$buildPath\boost-build"
 $boostBaseName = "boost_" + $BoostVersion.Replace(".", "_")
 $boostBaseNameShort = "boost-" + $BoostVersion.Replace(".0", "").Replace(".", "_")
-$cmakeToolset = $(if ($Bitness -eq 64) {"v141,host=x64"} else {"v141,host=x86"}) 
 $QtReleaseFull = "$QtRelease.0"
 $downloadPath = "$RootPath\downloads"
 $ProgramFiles32 = $(Get-Item "env:programfiles(x86)").Value
@@ -149,13 +152,15 @@ $downloads = $(
         url               = "http://www.7-zip.org/a/7z1800$bitArch4.exe"; 
         filename          = "7z1800$bitArch4.exe";
         installPath       = "$ProgramFiles\7-Zip";
-        addPath           = "$ProgramFiles\7-Zip"
+        addPath           = "$ProgramFiles\7-Zip";
+        enabled           = $true;
     },
     @{
         name              = "wget";
         url               = "https://eternallybored.org/misc/wget/releases/wget-1.19.4-win$Bitness.zip"; 
         filename          = "wget-1.19.4-win$Bitness.zip";
-        extractPath       = "$env:TEMP\wget"
+        extractPath       = "$env:TEMP\wget";
+        enabled           = $true;
     },
     @{
         name              = "Python2";
@@ -163,51 +168,60 @@ $downloads = $(
         filename          = "python-2.7.14.$bitArch3.msi";
         extractPath       = "$env:TEMP\python2";
         installPath       = "$Python2Path";
-        addPath           = "$Python2Path"
+        addPath           = "$Python2Path";
+        enabled           = $true;
     },
     @{
         name              = "NSIS";
         url               = "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.02.1/nsis-3.02.1-setup.exe";
         filename          = "nsis-3.02.1-setup.exe";
         installPath       = "$ProgramFiles32\NSIS\";
-        addPath           = "$ProgramFiles32\NSIS\bin"
+        addPath           = "$ProgramFiles32\NSIS\bin";
+        enabled           = $true;
     },
     @{
         name              = "MS MPI";
-        url               = "https://download.microsoft.com/download/9/E/D/9ED82A62-4235-4003-A59A-9F6246073F2E/MSMpiSetup.exe";
+        url               = "https://download.microsoft.com/download/2/E/C/2EC96D7F-687B-4613-80F6-E10F670A2D97/msmpisdk.msi";
         filename          = "MSMpiSetup.exe";
         installPath       = "$ProgramFiles\Microsoft MPI";
-        addPath           = "$ProgramFiles\Microsoft MPI\Bin"
+        addPath           = "$ProgramFiles\Microsoft MPI\Bin";
+        enabled           = $true;
     },
     @{
         name              = "MS MPI SDK";
-        url               = "https://download.microsoft.com/download/9/E/D/9ED82A62-4235-4003-A59A-9F6246073F2E/msmpisdk.msi";
+        url               = "https://download.microsoft.com/download/2/E/C/2EC96D7F-687B-4613-80F6-E10F670A2D97/msmpisdk.msi";
         filename          = "msmpisdk.msi";
         installPath       = "$ProgramFiles32\Microsoft SDKs\MPI";
-        addPath           = "$ProgramFiles32\Microsoft SDKs\MPI\Bin"
+        addPath           = "$ProgramFiles32\Microsoft SDKs\MPI\Bin";
+        enabled           = $true; 
     },
     @{
         name              = "git";
         url               = "https://github.com/git-for-windows/git/releases/download/v2.16.1.windows.2/Git-2.16.1.2-64-bit.exe";
         filename          = "Git-2.16.1.2-64-bit.exe";
         installPath       = "$ProgramFiles\git";
+        enabled           = $true;
     },
-    #@{
-    #    name              = "CMake";
-    #    url               = "https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
-    #    filename          = "cmake-3.10.2-$bitArch2-$bitArch1.zip";
-    #    collapseDir       = $true;
-    #    extractpath       = "$RootPath\cmake";
-    #    linkedInstallName = "cmake";
-    #    linkedInstallPath = "$RootPath\cmake";
-    #},
-    #@{
-    #    name              = "Boost Source";
-    #    url               = "https://dl.bintray.com/boostorg/release/$BoostVersion/source/$boostBaseName.zip";
-    #    filename          = "$boostBaseName.zip";
-    #    collapseDir       = $true;
-    #    extractPath       = $boostSrcPath
-    #},
+    @{
+        name              = "CMake";
+        url               = "https://cmake.org/files/v3.10/cmake-3.10.2-$bitArch2-$bitArch1.zip";
+        filename          = "cmake-3.10.2-$bitArch2-$bitArch1.zip";
+        collapseDir       = $true;
+        extractpath       = "$RootPath\cmake";
+        linkedInstallName = "cmake";
+        linkedInstallPath = "$RootPath\cmake";
+        enabled           = !$UseVsCmake;
+    },
+    @{
+        name              = "Boost Source";
+        url               = "https://dl.bintray.com/boostorg/release/$BoostVersion/source/$boostBaseName.zip";
+        filename          = "$boostBaseName.zip";
+        collapseDir       = $true;
+        extractPath       = $boostSrcPath;
+        boostIncludePath  = "$boostPrefixPath\include\$boostBaseNameShort\boost";
+        boostLibPath      = "$boostPrefixPath\lib";
+        enabled           = $UseBoostFromSource;
+    },
     @{
         name              = "Boost Binary";
         url               = "https://dl.bintray.com/boostorg/release/$BoostVersion/binaries/$boostBaseName-$env:msvcver-$Bitness.exe";
@@ -219,6 +233,9 @@ $downloads = $(
         removeSearchFor   = $bitArch7
         linkedInstallName = "boost";
         linkedInstallPath = "$RootPath\boost";
+        boostIncludePath  = "$boostPrefixPath\boost";
+        boostLibPath      = "$boostPrefixPath\lib$bitArch6-$env:msvcver";
+        enabled           = !$UseBoostFromSource;
     },
     @{
         name              = "Qt";
@@ -229,13 +246,15 @@ $downloads = $(
         installComment    = "Please check msvc$VsVersion $Bitness-bit Prebuilt Components";
         linkedInstallName = "qt";
         linkedInstallPath = "$QtReleaseFull\msvc$VsVersion`_$Bitness";
+        enabled           = $true;
+    },
+    @{
+        name              = "Qt-src";
+        url               = "http://download.qt.io/official_releases/qt/$QtRelease/$QtReleaseFull/single/qt-everywhere-src-$QtReleaseFull.zip";
+        filename          = "qt-everywhere-src-$QtReleaseFull.zip";
+        extractPath       = "$buildPath\qt-src";
+        enabled           = $false;
     }
-    #,@{
-    #    name             = "Qt-src";
-    #    url              = "http://download.qt.io/official_releases/qt/$QtRelease/$QtReleaseFull/single/qt-everywhere-src-$QtReleaseFull.zip";
-    #    filename         = "qt-everywhere-src-$QtReleaseFull.zip";
-    #    extractPath      = "$buildPath\qt-src"
-    #}
 
 )
 
@@ -243,10 +262,8 @@ $buildQtPath = "$buildPath\qt"
 $buildQtSrcPath = "$buildPath\qt-src"
 $env:Qt5_DIR = $buildQtPath
 $env:FINDBOOST_PATH = ""
-#$boostIncludePath = "$boostPrefixPath\include\$boostBaseNameShort\boost"
-$boostIncludePath = "$boostPrefixPath\boost"
-$boostLibPath = "$boostPrefixPath\libs"
-$boostLibPath2 = "$boostPrefixPath\lib$bitArch6-$env:msvcver"
+$env:BOOST_INCLUDEDIR = "";
+$env:BOOST_LIBRARYDIR = "";
 $boostProjectConfig = "$boostSrcPath\project-config.jam"
 $boostUserConfig = "$boostSrcPath\user-config$bitArch6.jam"
 $boostUserHpp = "$boostSrcPath\boost\config\user.hpp"
@@ -386,6 +403,7 @@ function Process-Downloads {
     foreach ($file in $downloads) {
         $name = "$($file.name)"
         $filePath = "$downloadPath\$($file.filename)"
+        $enabled = $($file.enabled)
         $url = "$($file.url)"
         $extractPath = "$($file.extractPath)"
         $installPath = "$($file.installPath)"
@@ -404,6 +422,12 @@ function Process-Downloads {
         $removeSearchFor = "$($file.removeSearchFor)"
         $realLinkedInstallPath = "$installPath\$linkedInstallPath"
         if ($installPath -eq $linkedInstallPath) { $realLinkedInstallPath = $installPath }
+
+        if (!($enabled)) {
+            Write-Host "* $name disabled, skipping."
+            continue
+        }
+
         Write-Host "* Checking $name is installed in $targetDir"
 
         if (!(Test-Path $downloadPath)) {
@@ -418,6 +442,17 @@ function Process-Downloads {
         if ($file.deleteBeforeExtract -eq $true -and (Test-Path $extractPath)) {
             Write-Host "*   Deleting old extraction $extractPath"
             del -Force -Recurse $extractPath
+        }
+
+        $boostIncludePath = $($file.boostIncludePath)
+        if ($boostIncludePath) { 
+            Write-Host "*   Setting BOOST_INCLUDEDIR=$boostIncludePath"
+            $env:BOOST_INCLUDEDIR = $boostIncludePath 
+        }
+        $boostLibPath = $($file.boostLibPath)
+        if ($boostLibPath) { 
+            Write-Host "*   Setting BOOST_LIBRARYDIR=$boostLibPath"
+            $env:BOOST_LIBRARYDIR = $boostLibPath 
         }
 
         if (!(Test-Path $filePath)) {
@@ -443,14 +478,14 @@ function Process-Downloads {
             } else {
                 Start-Process -FilePath "$filePath" -ArgumentList $installParams -Wait
             }
-            if ($removeArch) {
+            if (($removeArch) -and (Test-Path "$installPath\$removePath\*$removeSearchFor*")) {
                 Write-Host "*   Removing $removeSearchFor in filenames inside $installPath\$removePath."
-                dir "$installPath\$removePath" | Rename-Item -NewName { $_.Name -replace $removeSearchFor,"" }
-
+                dir "$installPath\$removePath" | Rename-Item -NewName { $_.Name -replace $removeSearchFor,"" } | Out-Null
             }
         }
         if (($filePath -match ".zip") -and (!(Test-Path $extractPath))) {
-            Write-Host "*   Unzipping $filePath into $extractPath..."
+            Write-Host "*   U
+            nzipping $filePath into $extractPath..."
             Push-Location
             Unzip $filePath $extractPath
             cd $extractPath
@@ -499,45 +534,31 @@ if (!(Test-Path $repoPath)) {
     mkdir $repoPath | out-null
 }
 
-if (Test-Path $repoPath) {
-    Write-Host "* Clearing $repoPath"
-    rm -Force -Recurse $repoPath | Out-Null
-}
+if (!([string]::IsNullOrEmpty($GithubBranch))) {
+    if (Test-Path $repoPath) {
+        Write-Host "* Clearing $repoPath"
+        rm -Force -Recurse $repoPath | Out-Null
+    }
 
-Write-Host "* Cloning $GithubRepo into $repoPath"
-$backupErrorActionPreference = $script:ErrorActionPreference
-$script:ErrorActionPreference = "Stop"
-& git clone -q $GithubRepo $repoPath
-$script:ErrorActionPreference = $backupErrorActionPreference
+    Write-Host "* Cloning $GithubRepo into $repoPath from $GithubBranch branch"
+    $backupErrorActionPreference = $script:ErrorActionPreference
+    $script:ErrorActionPreference = "Stop"
+    exec { & git clone --branch $GithubBranch $GithubRepo $repoPath }
+    $script:ErrorActionPreference = $backupErrorActionPreference
 
-if (Test-Path $buildPath\qt) {
-    (Get-Item $buildPath\qt).Delete() | out-null
-}
-
-if (Test-Path $buildPath\cmake) {
-    (Get-Item $buildPath\cmake).Delete() | out-null
-}
-
-if (Test-Path $buildPath\boost) {
-    (Get-Item $buildPath\boost).Delete() | out-null
-}
-
-
-if ((Test-Path $buildPath) -and ($ForceFullBuild -eq $true)) {
-    Write-Host "* Forcing full build, deleting $buildPath"
-    if (Test-Path "$buildPath\qt") {
+    if (Test-Path $buildPath\qt) {
         (Get-Item $buildPath\qt).Delete() | out-null
     }
-    if (Test-Path "$RootPath\empty") {
-        rmdir "$RootPath\empty" | out-null
-    }
-    mkdir "$RootPath\empty" | out-null
-    robocopy "$RootPath\empty" $buildPath /mir | out-null 
-    rmdir $buildPath | out-null
-    rmdir "$RootPath\empty" | out-null
-}
 
-Write-Host "* Copying $repoPath into $buildPath"
+    if ((Test-Path $buildPath\cmake) -and (!$UseVsCmake)) {
+        (Get-Item $buildPath\cmake).Delete() | out-null
+    }
+
+    if ((Test-Path $buildPath\boost) -and (!$UseBoostFromSource)) {
+        (Get-Item $buildPath\boost).Delete() | out-null
+    }
+}
+Write-Host "* Mirroring $repoPath into $buildPath"
 robocopy $repoPath $buildPath /mir | out-null 
  
 Write-Host "* Preparing build tools..."
@@ -576,20 +597,23 @@ if (Test-Path $boostSrcPath) {
         Invoke-SearchReplace "$boostUserHpp" "// define this to locate a compiler config file:" "#define BOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE`n// define this to locate a compiler config file:"
         & .\bootstrap.bat --with-libraries=date_time,filesystem,system,log,thread,program_options,regex,chrono,atomic,python
     }
-    If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
-        Write-Host "* Fixing $boostProjectConfig"
-        $clPath = (Resolve-Anypath -file  "cl.exe" -find "Host$bitArch5.$bitArch1").Replace("\", "/")
-        Write-Host "* Patching $boostProjectConfig with $rpl"
-        Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:VsVersion : `"$clPath`" ; "
-        Write-output `n | Out-File boostProjectConfig -Append 
-        Add-Content $boostProjectConfig "using python : 2.7 : $Python2Path : $Python2Path\include : $Python2Path\libs : $boostProjectConfigBitness".Replace("\", "\\")
-        if (!(Test-Path $boostUserConfig)) {
-            Add-Content $boostUserConfig "using mpi ; "
-        }
-    }
+    #If (!(Get-Content $boostProjectConfig | Select-String -Pattern "cl.exe")) {
+    #    Write-Host "* Fixing $boostProjectConfig"
+    #    $clPath = (Resolve-Anypath -file  "cl.exe" -find "Host$bitArch5.$bitArch1").Replace("\", "/")
+    #    Write-Host "* Patching $boostProjectConfig with $rpl"
+    #    Invoke-SearchReplace $boostProjectConfig "using msvc ;" "using msvc : $env:VsVersion : `"$clPath`" ; "
+    #    Write-output `n | Out-File boostProjectConfig -Append 
+    #    Add-Content $boostProjectConfig "using python : 2.7 : $Python2Path : $Python2Path\include : $Python2Path\libs : $boostProjectConfigBitness".Replace("\", "\\")
+    #    if (!(Test-Path $boostUserConfig)) {
+    #        Add-Content $boostUserConfig "using mpi ; "
+    #    }
+    #}
     if (!(Test-Path "$boostBuildPath\boost")) {
-        .\b2 install --prefix="$boostPrefixPath" --build-dir="$boostBuildPath" --abbreviate-paths toolset=$env:msvcver $boostArch $boostLink $boostRuntimeLink $boostThreading $boostVariant runtime-debugging=off
+        .\b2 --prefix="$boostPrefixPath" --build-dir="$boostBuildPath" --layout=versioned $boostLink $boostThreading install
+        #.\b2 install --prefix="$boostPrefixPath" --build-dir="$boostBuildPath" --layout=versioned --abbreviate-paths toolset=$env:msvcver $boostArch $boostLink $boostRuntimeLink $boostThreading $boostVariant runtime-debugging=off
+        dir $env:BOOST_LIBRARYDIR -Recurse | Rename-Item -NewName { $_.Name -replace "$bitArch7-$boostBaseNameShort","" }
         # notes: http://www.boost.org/doc/libs/1_66_0/more/getting_started/windows.html
+        #    https://gitlab.kitware.com/cmake/cmake/issues/17575
     }
 }
 
@@ -619,21 +643,21 @@ if (Test-Path CMakeFiles) {
     rm -Force -Recurse CMakeFiles | out-null
 }
 
-if (Test-Path build) {
-    rm -Force -Recurse build
-}
-
-cmake -G $env:VS_ARCH `
+cmake `
+-G $env:VS_ARCH `
+-T $env:CMAKE_TOOLSET `
 -DQt5_DIR="$($env:Qt5_DIR)" `
 -DBOOST_ROOT="$($boostPrefixPath)" `
--DBoost_DEBUG=$env:BOOST_DEBUG `
--DRAIBLOCKS_GUI=$env:RAIBLOCKS_GUI `
--BOOST_CUSTOM=$env:BOOST_CUSTOM `
--DCRYPTOPP_CUSTOM=$env:CRYPTOPP_CUSTOM `
--T $cmakeToolset `
+-DBOOST_INCLUDEDIR="$($env:BOOST_INCLUDEDIR)" `
+-DBOOST_LIBRARYDIR="$($env:BOOST_LIBRARYDIR)" `
+-DBoost_DEBUG=ON `
+-DRAIBLOCKS_GUI=ON `
+-BOOST_CUSTOM=ON `
+-DRAIBLOCKS_SIMD_OPTIMIZATIONS=ON `
+-DCRYPTOPP_CUSTOM=ON `
 CMakeLists.txt
 
 if (Test-Path ALL_BUILD.vcxproj) {
     devenv /Rebuild Debug ALL_BUILD.vcxproj
 }
-#$env:PATH = $env:PATH_BACKUP
+$env:PATH = $env:PATH_BACKUP
