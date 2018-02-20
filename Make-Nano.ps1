@@ -650,14 +650,15 @@ cmake `
 -DBOOST_ROOT="$($boostPrefixPath)" `
 -DBOOST_INCLUDEDIR="$($env:BOOST_INCLUDEDIR)" `
 -DBOOST_LIBRARYDIR="$($env:BOOST_LIBRARYDIR)" `
--DBoost_DEBUG=ON `
--DRAIBLOCKS_GUI=ON `
--BOOST_CUSTOM=ON `
+-DBoost_DEBUG="$($env:BOOST_DEBUG)" `
+-DRAIBLOCKS_GUI="$($env:RAIBLOCKS_GUI)" `
+-BOOST_CUSTOM="$($env:BOOST_CUSTOM)" `
+-DCRYPTOPP_CUSTOM="$($env:CRYPTOPP_CUSTOM)" `
 -DRAIBLOCKS_SIMD_OPTIMIZATIONS=ON `
--DCRYPTOPP_CUSTOM=ON `
 CMakeLists.txt
 
 if (Test-Path ALL_BUILD.vcxproj) {
     devenv /Rebuild Debug ALL_BUILD.vcxproj
+    #devenv nano_wallet
 }
-$env:PATH = $env:PATH_BACKUP
+#$env:PATH = $env:PATH_BACKUP
